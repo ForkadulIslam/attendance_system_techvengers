@@ -88,4 +88,9 @@ class User extends Model implements AuthenticatableContract, CanResetPasswordCon
     {
         return $this->hasMany('App\Messages', 'sender_id', 'id');
     }
+
+    public function userBreaks()
+    {
+        return $this->hasMany(UserBreak::class, 'user_id');
+    }
 }

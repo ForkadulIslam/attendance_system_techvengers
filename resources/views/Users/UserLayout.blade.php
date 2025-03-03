@@ -15,16 +15,15 @@
     {!! HTML::style('css/pnotify/jquery.pnotify.default.icons.css') !!}
     {!! HTML::style('css/pnotify/jquery.pnotify.default.css') !!}
     {!! HTML::script('js/angular.min.js') !!}
-    @yield('cssTop')
-    <script>
-        (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
-            (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
-                m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
-        })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
 
-        ga('create', 'UA-60038966-1', 'auto');
-        ga('send', 'pageview');
-    </script>
+    <style>
+        .breakTimeHighlighter {
+            font-weight: bold;
+            color: #ff3515; /* Change this to any color you prefer */
+        }
+    </style>
+    @yield('cssTop')
+
     {{--timer js function --}}
     <script>
         $(document).ready(function() {
@@ -127,7 +126,7 @@
                 <span class="icon-bar"></span>
                 <span class="icon-bar"></span>
             </a>
-            <a class="brand" href="http://www.kingpabel.com">TechVengers</a>
+            <a class="brand" href="{!! url('/') !!}">TechVengers</a>
             <!-- user dropdown starts -->
             <div class="btn-group pull-right" >
                 <a class="btn dropdown-toggle" data-toggle="dropdown" href="#">
@@ -234,6 +233,7 @@
 {!! HTML::script('js/charisma/js/jquery.autogrow-textarea.js') !!}
 {!! HTML::script('js/charisma/js/jquery.uploadify-3.1.min.js') !!}
 {!! HTML::script('js/charisma/js/jquery.history.js') !!}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 {{--{!! HTML::script('js/charisma/js/charisma.js') !!}--}}
 
 </body>

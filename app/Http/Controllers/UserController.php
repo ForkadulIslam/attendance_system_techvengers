@@ -1,8 +1,10 @@
 <?php namespace App\Http\Controllers;
 use App\Leave;
 use App\LeaveCategories;
+use App\UserBreak;
 use App\UserDetails;
 use Auth;
+use Carbon\Carbon;
 use Request;
 use Session;
 use DB;
@@ -42,6 +44,9 @@ class UserController extends Controller {
             $data['status'] = "Punch In";
         }
         $data['allNotice'] = NoticeBoard::orderBy('id', 'DESC')->paginate(10);
+        $data['onBreak'] = (session()->get('break_status') == 'on');
+
+        $data['activityWiseUserList'] =  $this->activityWiseUserList();
         return view('Users.dashBoard', $data);
     }
 
@@ -56,6 +61,7 @@ class UserController extends Controller {
             if($timeDiff == 0)
                 $timeDiff = 1;
             Session::put('timeTrack', $timeDiff);
+
         }
     }
 
@@ -117,12 +123,14 @@ class UserController extends Controller {
         else {
             $status = 'Present';
         }
+        //return date('Y-m-d H:i:s', time());
+        $time = time();
         $punchIn = new UserDetails();
         $punchIn->status = $status;
         $punchIn->user_id = Auth::user()->id;
         $punchIn->user_name = Auth::user()->username;
-        $punchIn->login_time = date('Y-m-d H:i:s', time());
-        $punchIn->login_date = date('Y-m-d', time());
+        $punchIn->login_time = date('Y-m-d H:i:s', $time);
+        $punchIn->login_date = date('Y-m-d', $time);
         $punchIn->save();
         Session::flash('punchMessageSuccess', 'You Are Punch In');
         return redirect('user');
@@ -562,6 +570,62 @@ class UserController extends Controller {
         $message->receiver_id = Input::get('receiver_id');
         $message->save();
         return $message;
+    }
+
+    public function activityWiseUserList(){
+        $allUsers = \App\User::where('user_label', 2)
+            ->where('status', 1)
+            ->orderBy('username', 'asc')
+            ->get();
+
+        $punchedInUsers = [];
+        $notPunchedInUsers = [];
+        $onBreakUsers = [];
+
+        foreach ($allUsers as $user) {
+            $punchData = UserDetails::where('user_id', $user->id)
+                ->whereNull('logout_time')
+                ->latest()
+                ->first();
+            $userInfo = $user->username . ' (' . $user->user_first_name . ' ' . $user->user_last_name . ')';
+            if ($punchData) {
+                // Check if the user is on break
+                $activeBreak = UserBreak::where('user_id', $user->id)
+                    ->whereNull('break_end')
+                    ->latest()
+                    ->first();
+                if ($activeBreak) {
+                    // User is on break, so add to "On Break" list and exclude from "On Desk"
+                    $breakDuration = Carbon::parse($activeBreak->break_start)
+                        ->diff(Carbon::now())
+                        ->format('%H:%I:%S');
+
+                    $onBreakUsers[] = [
+                        'name' => $userInfo,
+                        'break_duration' => $breakDuration
+                    ];
+                } else {
+                    // User is working (not on break), add to "On Desk" list
+                    $workingHours = Carbon::parse($punchData->login_time)
+                        ->diff(Carbon::now())
+                        ->format('%H:%I:%S');
+
+                    $punchedInUsers[] = [
+                        'name' => $userInfo,
+                        'working_hours' => $workingHours
+                    ];
+                }
+            } else {
+                // User has not punched in yet, add to "Not Punched In" list
+                $notPunchedInUsers[] = $userInfo;
+            }
+        }
+
+        return [
+            'punchedInUser' => $punchedInUsers,  // Now excludes users who are on break
+            'notPunchedInUser' => $notPunchedInUsers,
+            'onBreakUser' => $onBreakUsers
+        ];
     }
 
 }

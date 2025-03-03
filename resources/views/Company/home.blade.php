@@ -93,6 +93,71 @@
     </div>
 
     <div class="row-fluid">
+        <div class="box span4">
+            <div class="box-header well" data-original-title>
+                <h2><i class="icon-list-alt"></i>  Active</h2>
+
+            </div>
+            <div class="box-content">
+                <ul>
+                    @foreach($activityWiseUserList['punchedInUser'] as $user)
+                        <li>
+                            <a style="font-size: 13px; color:#666;" href="{!! URL::to('company/report') !!}?s_date=<?php echo date('Y-m-d', time()) ?>&e_date=<?php echo date('Y-m-d') ?>&id=<?php echo $user['id'] ?>">
+                                {!! $user['name'] !!} <small>{!! $user['working_hours'] !!}</small>
+                            </a>
+                        </li>
+                    @endforeach
+                </ul>
+            </div>
+        </div>
+        <!--/span-->
+
+        <div class="box span4">
+            <div class="box-header well" data-original-title>
+                <h2><i class="icon-list-alt"></i>  Break</h2>
+
+            </div>
+            <div class="box-content">
+                <ul>
+                    @foreach($activityWiseUserList['onBreakUser'] as $user)
+
+                        <?php
+                        list($hours, $minutes, $seconds) = explode(':', $user['break_duration']);
+                        $totalMinutes = ($hours * 60) + $minutes;
+                        $highlightClass = $totalMinutes > 30 ? 'breakTimeHighlighter' : '';
+                        ?>
+
+                        <li class="{{ $highlightClass }}">
+                            <a style="font-size: 13px; color:#666;" href="{!! URL::to('company/report') !!}?s_date=<?php echo date('Y-m-d', time()) ?>&e_date=<?php echo date('Y-m-d') ?>&id=<?php echo $user['id'] ?>">
+                                {!! $user['name'] !!}
+                                <small>{!! $user['break_duration'] !!}</small>
+                            </a>
+                        </li>
+                    @endforeach
+                </ul>
+            </div>
+        </div>
+
+        <div class="box span4">
+            <div class="box-header well" data-original-title>
+                <h2><i class="icon-list-alt"></i> Inactive</h2>
+
+            </div>
+            <div class="box-content">
+                <ul>
+                    @foreach($activityWiseUserList['notPunchedInUser'] as $user)
+                        <li>
+                            <a style="font-size: 13px; color:#666;" href="{!! URL::to('company/report') !!}?s_date=<?php echo date('Y-m-d', time()) ?>&e_date=<?php echo date('Y-m-d') ?>&id=<?php echo $user['id'] ?>">
+                                {!! $user['name'] !!}
+                            </a>
+                        </li>
+                    @endforeach
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="row-fluid">
         <div class="box span6 ">
             <div class="box-header well">
                 <h2><i class="icon-time"></i> Minutes Worked Today</h2>
@@ -305,6 +370,9 @@
 </script>
 
     <script type="text/javascript">
+        setInterval(function() {
+            location.reload();
+        }, 30000);
         google.load("visualization", "1", {packages:["corechart"]});
         google.setOnLoadCallback(drawChart);
         function drawChart() {

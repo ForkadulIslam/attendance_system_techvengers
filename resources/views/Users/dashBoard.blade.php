@@ -37,7 +37,19 @@
             else
                 $punch_url = 'punch-in';
             ?>
-                {!! link_to("user/$punch_url/","$status",array('class'=>'btn btn-large btn-success')) !!}
+                <a href="#" onclick="confirmPunch('{!! URL::to("user/$punch_url/") !!}', '{{ $status }}')" class="btn btn-large btn-success">
+                    {{ $status }}
+                </a>
+
+                @if (\App\UserBreak::isUserOnBreak(Auth::id()))
+                    <a href="#" onclick="confirmPunch('{!! route('break.end') !!}', 'End Break')" class="btn btn-large btn-danger">
+                        End Break
+                    </a>
+                @else
+                    <a href="#" onclick="confirmPunch('{!! route('break.start') !!}', 'Start Break')" class="btn btn-large btn-warning">
+                        Start Break
+                    </a>
+                @endif
         </div>
     </div>
     <!--/span-->
@@ -75,6 +87,62 @@
         </div>
     </div>
 </div><!--/span-->
+
+<div class="row-fluid sortable">
+    <div class="box span4">
+        <div class="box-header well" data-original-title>
+            <h2><i class="icon-list-alt"></i>  Active</h2>
+
+        </div>
+        <div class="box-content">
+            <ul>
+                @foreach($activityWiseUserList['punchedInUser'] as $user)
+                <li>{!! $user['name'] !!} <small>{!! $user['working_hours'] !!}</small></li>
+                @endforeach
+            </ul>
+        </div>
+    </div>
+    <!--/span-->
+
+    <div class="box span4">
+        <div class="box-header well" data-original-title>
+            <h2><i class="icon-list-alt"></i>  Break</h2>
+
+        </div>
+        <div class="box-content">
+            <ul>
+                @foreach($activityWiseUserList['onBreakUser'] as $user)
+
+                    <?php
+                    list($hours, $minutes, $seconds) = explode(':', $user['break_duration']);
+                    $totalMinutes = ($hours * 60) + $minutes;
+                    $highlightClass = $totalMinutes > 30 ? 'breakTimeHighlighter' : '';
+                    ?>
+
+                    <li class="{{ $highlightClass }}">
+                        {!! $user['name'] !!}
+                        <small>{!! $user['break_duration'] !!}</small>
+                    </li>
+                @endforeach
+            </ul>
+        </div>
+    </div>
+
+    <div class="box span4">
+        <div class="box-header well" data-original-title>
+            <h2><i class="icon-list-alt"></i> Inactive</h2>
+
+        </div>
+        <div class="box-content">
+            <ul>
+                @foreach($activityWiseUserList['notPunchedInUser'] as $user)
+                    <li>{!! $user !!}</li>
+                @endforeach
+            </ul>
+        </div>
+    </div>
+</div>
+
 <div class="row-fluid">
     <div class="box span12 ">
         <div class="box-header well">
@@ -130,5 +198,37 @@
 </script>
 
 <?php } ?>
+
+<?php $break_message_success = Session::get('success'); ?>
+@if ($break_message_success)
+    <script type="text/javascript">
+        $(document).ready(function() {
+            $.pnotify({
+                title: 'Message',
+                text: '{{ $break_message_success }}',
+                type: 'success',
+                delay: 3000
+            });
+        });
+    </script>
+@endif
+
+<script>
+    function confirmPunch(url, status) {
+        Swal.fire({
+            title: "Are you sure?",
+            text: "You are about to " + status.toLowerCase(),
+            icon: "warning",
+            showCancelButton: true,
+            confirmButtonColor: "#28a745",
+            cancelButtonColor: "#d33",
+            confirmButtonText: "Yes, " + status.toLowerCase() + "!"
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.location.href = url;
+            }
+        });
+    }
+</script>
 @endsection
 

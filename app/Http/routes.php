@@ -22,6 +22,8 @@ Route::controller('login', 'LoginController');
 
 Route::group(['middleware' => 'auth'], function () {
     Route::controller('user', 'UserController');
+    Route::get('break-start', 'BreakTimeController@breakStart')->name('break.start');
+    Route::get('break-end', 'BreakTimeController@breakEnd')->name('break.end');
 });
 
 Route::group(['middleware' => 'auth.company'], function () {
