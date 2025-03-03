@@ -25,17 +25,13 @@
     {!! HTML::script('js/amCharts.js') !!}
     {!! HTML::script('js/serial.js') !!}
     {!! HTML::script('js/none.js') !!}
+    <style>
+        .breakTimeHighlighter {
+            color: #ff3515; /* Change this to any color you prefer */
+        }
+    </style>
     @yield('cssTop')
-    <script>
-        (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
-            (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
-                m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
-        })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
 
-        ga('create', 'UA-60038966-1', 'auto');
-        ga('send', 'pageview');
-
-    </script>
 
     @yield('jsBottom')
     <script>
@@ -95,7 +91,7 @@
                 <span class="icon-bar"></span>
                 <span class="icon-bar"></span>
             </a>
-            <a class="brand" href="http://www.kingpabel.com">
+            <a class="brand" href="{!! url('/') !!}">
                 TechVengers
             </a>
             <!-- user dropdown starts -->
