@@ -55,7 +55,11 @@
                             echo $report['last_logout'];
                             ?>
                         </td>
-                        <td data-order="{{ $report['totalSeconds'] }}"><?php echo $report['workingTime']; ?></td>
+                        <td data-order="{{ $report['totalSeconds'] }}">
+                            <a href="{!! URL::to('company/attendance-log') !!}?s_date=<?php echo $date ?>&e_date=<?php echo $date ?>&id=<?php echo $report['user_id'] ?>">
+                                <?php echo $report['workingTime']; ?>
+                            </a>
+                        </td>
                         <td data-order="{{ $report['totalBreakSeconds'] }}">
                             <a href="{!! URL::to('company/break-time-log') !!}?s_date=<?php echo $date ?>&e_date=<?php echo $date ?>&id=<?php echo $report['user_id'] ?>">
                                 <?php echo $report['breakTime']; ?>

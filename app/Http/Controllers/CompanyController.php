@@ -871,6 +871,15 @@ class CompanyController extends Controller
                 ->groupBy('login_date')
                 ->orderBy('login_date', 'ASC')
                 ->get()
+                ->map(function($item){
+                    $item->work_time_second = $this->durationToSeconds($item->total_work_time);
+                    $item->break_time_second = 0;
+                    if($item->total_break_time){
+                        $item->break_time_second = $this->durationToSeconds($item->total_break_time);
+                    }
+                    return $item;
+                })
+                ->values()
                 ->toArray();
 
             //return $data['attendanceReport'];
@@ -885,6 +894,12 @@ class CompanyController extends Controller
             $data['allUser'] = $user->allUser();
             return view('Company.tableReportRequest', $data);
         }
+    }
+
+    function durationToSeconds($time) {
+        if (!$time) return 0;
+        list($h, $m, $s) = explode(':', $time);
+        return ($h * 3600) + ($m * 60) + $s;
     }
 
     /**
@@ -1384,16 +1399,31 @@ class CompanyController extends Controller
         $data['userInfo'] = \App\User::where('company_id', Auth::user()->company_id)
             ->where('id', $data['id'])->first();
         if (!$data['userInfo'])
-            return 'There User is Not Your Company';
+            return 'The User is Not In Your Company';
         $data['attendanceReport'] = UserDetails::
         select(DB::raw('timediff(logout_time,login_time) as timediff'),
             'login_date', 'logout_date', 'id', 'login_time', 'logout_time', 'user_id', 'status')
             ->where('user_id', $data['id'])
-            ->where('login_date', '>=', $data['startDate'])
-            ->where('logout_date', '<=', $data['endDate'])
+            ->where('login_date', '=', $data['startDate'])
             ->orderBy('id', 'ASC')
             ->get()
             ->toArray();
+
+        // ✅ Calculate total work time duration
+        $totalSeconds = 0;
+        foreach ($data['attendanceReport'] as $log) {
+            if ($log['timediff']) {
+                list($h, $m, $s) = explode(':', $log['timediff']);
+                $totalSeconds += ($h * 3600) + ($m * 60) + $s;
+            }
+        }
+        // Format to HH:MM:SS
+        $hours = floor($totalSeconds / 3600);
+        $minutes = floor(($totalSeconds % 3600) / 60);
+        $seconds = $totalSeconds % 60;
+        $data['totalWorkingHour'] = sprintf('%02d:%02d:%02d', $hours, $minutes, $seconds);
+        //return $data['totalWorkingHour'];
+        //return $data['attendanceReport'];
         $data['allDate'] = $this->getDatesFromRange($data['startDate'], $data['endDate']);
         $data['allHoliday'] = HolidayInfo::where('holiday', '>=', $data['startDate'])
             ->where('holiday', '<=', $data['endDate'])
@@ -1729,6 +1759,55 @@ class CompanyController extends Controller
 
         $log->delete();
         Session::flash('success', 'Break log deleted successfully!');
+        return redirect()->back();
+    }
+    public function getAttendanceLogTimeEditRequest($logId){
+        $data['log'] =  UserDetails::find($logId);
+        //return $data['log'];
+        return view('Company.attendanceTimeLogEditRequest', $data);
+    }
+    public function postAttendanceLogTimeEditRequest($logId){
+        $log = UserDetails::find($logId);
+        //return $log;
+        if (!$log) {
+            return redirect()->back()->with('flashError', 'Break log not found.');
+        }
+        $current_from_date = $log->login_date;
+        $current_to_date = $log->login_date;
+        //return $log;
+
+        // Validate request (optional but recommended)
+        $validator = Validator::make(Input::all(), [
+            'from' => 'required|date',
+            'to' => 'required|date|after:from',
+        ]);
+
+        if ($validator->fails()) {
+            Session::flash('error', 'Failed to update log');
+            return back()->withErrors($validator)->withInput();
+        }
+
+        // Update break times
+        $log->login_time = Input::get('from');
+        $log->login_date = Carbon::parse(Input::get('from'))->toDateString();
+        $log->logout_time = Input::get('to');
+        $log->logout_date = Carbon::parse(Input::get('to'))->toDateString();
+        $log->save();
+
+        Session::flash('success', 'Attendance log updated successfully!');
+        return redirect('company/attendance-log?s_date='.$current_from_date.'&e_date='.$current_to_date.'&id='.$log->user_id);
+    }
+    public function postAttendanceLogDelete($id)
+    {
+        $log = UserDetails::find($id);
+
+        if (!$log) {
+            Session::flash('error', 'Failed to delete log');
+            return redirect()->back();
+        }
+
+        $log->delete();
+        Session::flash('success', 'Attendance log deleted successfully!');
         return redirect()->back();
     }
 

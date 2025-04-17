@@ -19,6 +19,9 @@
 
             </div>
             <div class="box-content">
+                <div class="alert alert-info" style="margin-top: 20px;">
+                    <strong>Total Working Time:</strong> {{ $totalWorkingHour }}
+                </div>
                 <table id="example" class="display" cellspacing="0" width="100%">
                     <thead>
                     <tr>
@@ -37,6 +40,7 @@
                         <td>
                             Status
                         </td>
+                        <td>Action</td>
                     </tr>
                     </thead>
                     <tbody>
@@ -98,6 +102,20 @@
                             }
 
                             ?>
+                        </td>
+                        <td>
+                            @if($arr['status'] == 'Present')
+                            <a class="btn btn-info btn-sm" href="{!! url('company/attendance-log-time-edit-request', $arr['id']) !!}">Edit</a>
+
+                            {!! Form::open([
+                                'url' => url('company/attendance-log-delete', $arr['id']),
+                                'method' => 'POST',
+                                'style' => 'display:inline;',
+                                'onsubmit' => 'return confirm("Are you sure you want to delete this attendance log?");'
+                            ]) !!}
+                            <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                            {!! Form::close() !!}
+                            @endif
                         </td>
                     </tr>
                     <?php
