@@ -539,7 +539,7 @@ class UserController extends Controller {
                 ->orderBy('login_date', 'ASC')
                 ->get()
                 ->toArray();
-
+            //return $data['attendanceReport'];
             if (!$data['attendanceReport']) {
                 Session::flash('flashError', 'You are not Any Work From '.$data['startDate'].' to '. $data['endDate']);
                 return redirect('user/table-report');

@@ -80,9 +80,12 @@
                         if ($attendance) {
                             $workTimeInSeconds = strtotime($attendance['total_work_time']) - strtotime("00:00:00");
                             $breakTimeInSeconds = strtotime($attendance['total_break_time']) - strtotime("00:00:00");
-
-                            $activeTimeInSeconds = max(0, $workTimeInSeconds - $breakTimeInSeconds); // Ensure non-negative
-                            echo gmdate("H:i:s", $activeTimeInSeconds);
+                            if($attendance['total_break_time'] != null){
+                                $activeTimeInSeconds = max(0, $workTimeInSeconds - $breakTimeInSeconds); // Ensure non-negative
+                                echo gmdate("H:i:s", $activeTimeInSeconds);
+                            }else{
+                                echo $attendance['total_work_time'];
+                            }
                         } else {
                             echo '00:00:00';
                         }
@@ -111,7 +114,8 @@
     <script type="text/javascript" language="javascript" class="init">
         $(document).ready(function() {
             $('#example').DataTable( {
-                dom: 'T<"clear">lfrtip'
+                dom: 'T<"clear">lfrtip',
+                pageLength: 31
             } );
         } );
     </script>
