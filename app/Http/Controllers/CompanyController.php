@@ -1673,10 +1673,10 @@ class CompanyController extends Controller
                 'last_logout'=> null,
                 'totalSeconds' => 0,
                 'totalBreakSeconds' => 0,
-                'workingTime' => '00:00:00',
-                'breakTime' => '00:00:00',
+                'workingTime' => '0:00',
+                'breakTime' => '0:00',
                 'activeSeconds' => 0,
-                'activeTime' => '00:00:00',
+                'activeTime' => '0:00',
             ];
         }
         $data['reports'] = $reports;
