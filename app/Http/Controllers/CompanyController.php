@@ -72,6 +72,7 @@ class CompanyController extends Controller
         })->where('admin_noti_status', 1)->count();
         $data['allNotice'] = NoticeBoard::orderBy('id', 'DESC')->paginate(10);
         $data['activityWiseUserList'] =  $this->activityWiseUserList();
+        //return $data['activityWiseUserList'];
         return view('Company.home', $data);
     }
 
@@ -546,6 +547,22 @@ class CompanyController extends Controller
         return 'true';
     }
 
+    public function getEditLeaveCategory($id)
+    {
+        $data['allCategory'] = LeaveCategories::all();
+        $data['leaveCategory'] = LeaveCategories::find($id);
+        //return $data['leaveCategory'];
+        return view('Company.editLeaveCategory', $data);
+    }
+    public function postUpdateLeaveCategory(Request $request, $leaveCategoryId){
+        $categoryCreate = LeaveCategories::find($leaveCategoryId);
+        $categoryCreate->category = trim(Input::get('category'));
+        $categoryCreate->category_num = Input::get('category_num');
+        $categoryCreate->save();
+        Session::flash('flashSuccess', 'Leave Category Updated Successfully');
+        return redirect('company/leave-category');
+    }
+
     /**
      * @return \Illuminate\View\View|string
      */
@@ -578,7 +595,8 @@ class CompanyController extends Controller
             ->where('leave_status', 1)
             ->get()
             ->toArray();
-        return view('Company.report', $data);
+        //return $data['attendanceReport'];
+        return view('Company.attendanceLog', $data);
 
     }
 
@@ -600,6 +618,8 @@ class CompanyController extends Controller
             ->where('logout_time', '!=', '0000-00-00 00:00:00')
             ->orderBy('id', 'ASC')
             ->get();
+        //return $data['attendanceReport'];
+        $data['allDates'] = $this->getDatesFromRange($data['startDate'], $data['endDate']);
         return view('Company.summeryReport', $data);
     }
 
@@ -611,17 +631,53 @@ class CompanyController extends Controller
         if (Input::all()) {
             $data['startDate'] = Input::get('from');
             $data['endDate'] = Input::get('to');
+            $inactiveUserIds = User::where('status', 0)->where('user_label', 2)->lists('id');
+            $data['allDates'] = array_filter(
+                $this->getDatesFromRange($data['startDate'], $data['endDate']),
+                function ($date) {
+                    $dayOfWeek = Carbon::parse($date)->dayOfWeek;
+                    return !in_array($dayOfWeek, [Carbon::SATURDAY, Carbon::SUNDAY]); // Exclude weekends
+                }
+            );
             $data['attendanceReport'] = UserDetails::
             select(DB::raw('timediff(logout_time,login_time) as timediff'),
                 'login_date', 'logout_date', 'id', 'login_time', 'logout_time', 'user_id')
                 ->whereHas('User', function ($q) {
                     $q->where('company_id', Auth::user()->company_id);
                 })
-                ->where('login_date', '>=', $data['startDate'])
-                ->where('logout_date', '<=', $data['endDate'])
+                ->whereNotIn('user_id', $inactiveUserIds)
+                ->whereIn('login_date', $data['allDates'])  // Only working days
                 ->where('logout_time', '!=', '0000-00-00 00:00:00')
                 ->orderBy('id', 'ASC')
                 ->get();
+            //return collect($data['attendanceReport']);
+            // Fetch break times
+            $data['breakReport'] = DB::table('user_breaks')
+                ->select('user_id', DB::raw('SUM(TIMESTAMPDIFF(SECOND, break_start, break_end)) as break_seconds'))
+                ->whereIn(DB::raw('DATE(break_start)'), $data['allDates']) // Only working days
+                ->groupBy('user_id')
+                ->get();
+
+            // Convert to key-value array (for Laravel 5.1)
+            $breaksByUser = [];
+            foreach ($data['breakReport'] as $break) {
+                $breaksByUser[$break->user_id] = $break->break_seconds;
+            }
+            $data['breakReport'] = $breaksByUser;
+
+            $workingDays = $data['allDates'];
+            $data['approvedLeaves'] = User::with(['approvedLeave'=>function($query) use($workingDays){
+                $query->whereIn('leave_date', $workingDays)
+                    ->orderBy('leave_date', 'asc')
+                    ->select('user_id', 'leave_date');
+            }])->select('id')
+                ->where('company_id', Auth::user()->company_id)
+                ->where('user_label', 2)
+                ->where('status', 1)
+                ->get();
+            //return $data['approvedLeaves'];
+            //return $data['breakReport'];
+            //return collect($data['attendanceReport'])->where('user_id', 102);
             if ($data['attendanceReport']->isEmpty()) {
                 Session::flash('flashError', 'There is no report.Because None of Employee Has Not Work From ' . $data['startDate'] . ' to ' . $data['endDate']);
                 return redirect('company/report-summery');
@@ -658,20 +714,102 @@ class CompanyController extends Controller
             $data['id'] = Input::get('id');
             $data['userInfo'] = \App\User::where('company_id', Auth::user()->company_id)
                 ->where('id', $data['id'])->first();
+            //return $data['userInfo'];
             if (!$data['userInfo']) {
                 Session::flash('flashError', 'This User Is Not Your Company');
                 return redirect('company/full-calender');
             }
 
-            $data['attendanceReport'] = UserDetails::
-            select(DB::raw('timediff(logout_time,login_time) as timediff'),
+
+
+            $allDates = $this->getDatesFromRange($data['startDate'], $data['endDate']);
+            $weekends = $this->getWeekendDates($data['startDate'], $data['endDate']);
+
+            $holidays = HolidayInfo::whereBetween('holiday', [$data['startDate'], $data['endDate']])
+                ->select('holiday')
+                ->lists('holiday')
+                ->toArray();
+
+            $leaves = Leave::whereBetween('leave_date', [$data['startDate'], $data['endDate']])
+                ->where('user_id', $data['id'])
+                ->where('leave_status', 1)
+                ->select('leave_date')
+                ->lists('leave_date')
+                ->toArray();
+            //return $leaves;
+
+            $attendance = UserDetails::select(DB::raw('timediff(logout_time,login_time) as timediff'),
                 'login_date', 'logout_date', 'id', 'login_time', 'logout_time', 'user_id', 'status')
                 ->where('user_id', $data['id'])
-                ->where('login_date', '>=', $data['startDate'])
-                ->where('logout_date', '<=', $data['endDate'])
+                ->whereBetween('login_date', [$data['startDate'], $data['endDate']])
                 ->orderBy('id', 'ASC')
                 ->get()
                 ->toArray();
+            //return $attendance;
+
+            // Prepare report array
+            $attendanceReport = [];
+
+            // Add Present records
+            foreach ($attendance as $record) {
+                $attendanceReport[] = [
+                    'id' => $record['id'],
+                    'login_date' => $record['login_date'],
+                    'logout_date' => $record['logout_date'],
+                    'login_time' => $record['login_time'],
+                    'logout_time' => $record['logout_time'],
+                    'status' => 'Present',
+                ];
+            }
+
+            //return $attendanceReport;
+            // Add Leave records
+            foreach ($leaves as $leaveDate) {
+                $attendanceReport[] = [
+                    'id' => uniqid(), // temp ID
+                    'login_date' => $leaveDate,
+                    'logout_date' => $leaveDate,
+                    'login_time' => $leaveDate . ' 00:00:00',
+                    'logout_time' => $leaveDate . ' 23:59:59',
+                    'status' => 'On Leave',
+                ];
+            }
+
+            // Add Absent records
+            foreach ($allDates as $date) {
+                if (in_array($date, $weekends)) {
+                    continue; // Skip weekends and holidays
+                }
+                if(in_array($date, $holidays)){
+                    $attendanceReport[] = [
+                        'id' => uniqid(), // temp ID
+                        'login_date' => $date,
+                        'logout_date' => $date,
+                        'login_time' => $date . ' 00:00:00',
+                        'logout_time' => $date . ' 23:59:59',
+                        'status' => 'Holiday',
+                    ];
+                }
+
+                $isPresent = collect($attendanceReport)->where('login_date', $date)->count();
+                if ($isPresent == 0) {
+                    $attendanceReport[] = [
+                        'id' => uniqid(), // temp ID
+                        'login_date' => $date,
+                        'logout_date' => $date,
+                        'login_time' => $date . ' 00:00:00',
+                        'logout_time' => $date . ' 23:59:59',
+                        'status' => 'Absent',
+                    ];
+                }
+            }
+
+            // Sort by date
+            usort($attendanceReport, function ($a, $b) {
+                return strtotime($a['login_date']) - strtotime($b['login_date']);
+            });
+
+            $data['attendanceReport'] = $attendanceReport;
 
             if (!$data['attendanceReport']) {
                 Session::flash('flashError', $data['userInfo']->username . ' Has not Any Work From ' . $data['startDate'] . ' to ' . $data['endDate']);
@@ -703,6 +841,7 @@ class CompanyController extends Controller
                 return redirect('company/table-report');
             }
             $data['allDate'] = $this->getDatesFromRange($data['startDate'], $data['endDate']);
+            $data['weekends'] = $this->getWeekendDates($data['startDate'], $data['endDate']);
             $data['allHoliday'] = HolidayInfo::where('holiday', '>=', $data['startDate'])
                 ->where('holiday', '<=', $data['endDate'])
                 ->get()
@@ -713,16 +852,28 @@ class CompanyController extends Controller
                 ->where('leave_status', 1)
                 ->get()
                 ->toArray();
-            $data['attendanceReport'] = UserDetails::
-            select(DB::raw('timediff(logout_time,login_time) as timediff'),
-                'login_date', 'logout_date', 'id', 'login_time', 'logout_time', 'user_id', 'status')
+
+            //return $data['allLeave'];
+
+            $data['attendanceReport'] = UserDetails::select(
+                'login_date',
+                DB::raw('MIN(login_time) as first_login'),
+                DB::raw('MAX(logout_time) as last_logout'),
+                DB::raw('SEC_TO_TIME(SUM(TIME_TO_SEC(TIMEDIFF(logout_time, login_time)))) as total_work_time'),
+                DB::raw('(SELECT SEC_TO_TIME(SUM(TIME_TO_SEC(TIMEDIFF(break_end, break_start))))
+                  FROM user_breaks 
+                  WHERE user_breaks.user_id = user_details.user_id 
+                  AND DATE(user_breaks.break_start) = user_details.login_date) as total_break_time')
+            )
                 ->where('user_id', $data['id'])
-                ->where('login_date', '>=', $data['startDate'])
-                ->where('logout_date', '<=', $data['endDate'])
-                ->orderBy('id', 'ASC')
+                ->whereBetween('login_date', [$data['startDate'], $data['endDate']])
+                ->where('logout_time', '!=', '0000-00-00 00:00:00')
+                ->groupBy('login_date')
+                ->orderBy('login_date', 'ASC')
                 ->get()
                 ->toArray();
 
+            //return $data['attendanceReport'];
             if (!$data['attendanceReport']) {
                 Session::flash('flashError', $data['userInfo']->username . ' Has not Any Work From ' . $data['startDate'] . ' to ' . $data['endDate']);
                 return redirect('company/table-report');
@@ -1115,64 +1266,467 @@ class CompanyController extends Controller
     }
 
     public function activityWiseUserList(){
+        $onLeaveUsers = Leave::with([
+            'User'=>function($query){
+                $query->select('id', 'username', 'user_first_name', 'user_last_name');
+            }
+        ])->where('leave_date', date('Y-m-d'))
+            ->where('leave_status', 1)
+            ->select('user_id')
+            ->get();
         $allUsers = \App\User::where('user_label', 2)
             ->where('status', 1)
+            ->whereNotIn('id', $onLeaveUsers->pluck('user_id')->toArray())
             ->orderBy('username', 'asc')
             ->get();
-
+        //return $allUsers;
         $punchedInUsers = [];
         $notPunchedInUsers = [];
         $onBreakUsers = [];
+        $loggedOutUsers = [];
 
         foreach ($allUsers as $user) {
             $punchData = UserDetails::where('user_id', $user->id)
-                ->whereNull('logout_time')
+                ->where('login_date', date('Y-m-d'))
+                ->where('logout_date', '0000-00-00')
                 ->latest()
                 ->first();
-            $userInfo = $user->username . ' (' . $user->user_first_name . ' ' . $user->user_last_name . ')';
+            $userInfo = $user->username;
             if ($punchData) {
                 // Check if the user is on break
                 $activeBreak = UserBreak::where('user_id', $user->id)
                     ->whereNull('break_end')
                     ->latest()
                     ->first();
+
                 if ($activeBreak) {
                     // User is on break, so add to "On Break" list and exclude from "On Desk"
                     $breakDuration = Carbon::parse($activeBreak->break_start)
                         ->diff(Carbon::now())
-                        ->format('%H:%I:%S');
+                        ->format('%H:%I');
+
+                    // Fetch total break time for today
+                    $totalBreakTime = DB::table('user_breaks')
+                        ->where('user_id', $user->id)
+                        ->where('break_start', '>=', date('Y-m-d') . ' 00:00:00')
+                        ->where('break_start', '<=', date('Y-m-d') . ' 23:59:59')
+                        ->whereNotNull('break_end')
+                        ->select(DB::raw('SEC_TO_TIME(SUM(TIME_TO_SEC(TIMEDIFF(break_end, break_start)))) AS total_break_time'))
+                        ->first();
+
+                    $totalBreakDuration = $totalBreakTime->total_break_time ?? '00:00';
 
                     $onBreakUsers[] = [
                         'id' => $user->id,
                         'name' => $userInfo,
-                        'break_duration' => $breakDuration
+                        'break_duration' => $breakDuration,
+                        'total_break_duration' => Carbon::parse($totalBreakDuration)->format('H:i')
                     ];
                 } else {
                     // User is working (not on break), add to "On Desk" list
                     $workingHours = Carbon::parse($punchData->login_time)
                         ->diff(Carbon::now())
-                        ->format('%H:%I:%S');
-
+                        ->format('%H:%I');
                     $punchedInUsers[] = [
                         'id' => $user->id,
                         'name' => $userInfo,
-                        'working_hours' => $workingHours
+                        'working_hours' => $workingHours,
+                        'logged_in_at' => Carbon::parse($punchData->login_time)->format("H:i A")
                     ];
                 }
             } else {
-                // User has not punched in yet, add to "Not Punched In" list
-                $notPunchedInUsers[] = [
-                    'id' => $user->id,
-                    'name'=>$userInfo
-                ];
+
+                $loggedOutRecord = UserDetails::where('user_id', $user->id)
+                    ->where('login_date', date('Y-m-d'))
+                    ->where('logout_date', date('Y-m-d'))
+                    ->latest()
+                    ->first();
+                if ($loggedOutRecord) {
+                    $loggedOutUsers[] = [
+                        'id' => $user->id,
+                        'name' => $userInfo,
+                        'logged_out_at' => Carbon::parse($loggedOutRecord->logout_time)->format("H:i A"),
+                        'duration' => Carbon::parse($loggedOutRecord->login_time)
+                            ->diff(Carbon::parse($loggedOutRecord->logout_time))
+                            ->format('%H:%I')
+                    ];
+                } else {
+                    // Not punched in at all
+                    $notPunchedInUsers[] = [
+                        'id' => $user->id,
+                        'name' => $userInfo
+                    ];
+                }
             }
         }
-
+        usort($punchedInUsers, function ($a, $b) {
+            return strtotime($a['logged_in_at']) - strtotime($b['logged_in_at']);
+        });
+        usort($loggedOutUsers, function ($a, $b) {
+            return strtotime($a['logged_out_at']) - strtotime($b['logged_out_at']);
+        });
         return [
             'punchedInUser' => $punchedInUsers,  // Now excludes users who are on break
             'notPunchedInUser' => $notPunchedInUsers,
-            'onBreakUser' => $onBreakUsers
+            'onBreakUser' => $onBreakUsers,
+            'onLeaveUser' => $onLeaveUsers,
+            'punchedOutUser' => $loggedOutUsers,
         ];
+    }
+
+    public function anyAttendanceLog()
+    {
+        $data['startDate'] = Input::get('s_date');
+        $data['endDate'] = Input::get('e_date');
+        $data['id'] = Input::get('id');
+        $data['weekends'] = $this->getWeekendDates($data['startDate'], $data['endDate']);
+        //return $data['weekends'];
+        $data['userInfo'] = \App\User::where('company_id', Auth::user()->company_id)
+            ->where('id', $data['id'])->first();
+        if (!$data['userInfo'])
+            return 'There User is Not Your Company';
+        $data['attendanceReport'] = UserDetails::
+        select(DB::raw('timediff(logout_time,login_time) as timediff'),
+            'login_date', 'logout_date', 'id', 'login_time', 'logout_time', 'user_id', 'status')
+            ->where('user_id', $data['id'])
+            ->where('login_date', '>=', $data['startDate'])
+            ->where('logout_date', '<=', $data['endDate'])
+            ->orderBy('id', 'ASC')
+            ->get()
+            ->toArray();
+        $data['allDate'] = $this->getDatesFromRange($data['startDate'], $data['endDate']);
+        $data['allHoliday'] = HolidayInfo::where('holiday', '>=', $data['startDate'])
+            ->where('holiday', '<=', $data['endDate'])
+            ->get()
+            ->toArray();
+        $data['allLeave'] = Leave::where('leave_date', '>=', $data['startDate'])
+            ->where('leave_date', '<=', $data['endDate'])
+            ->where('user_id', $data['id'])
+            ->where('leave_status', 1)
+            ->get()
+            ->toArray();
+        return view('Company.attendanceLog', $data);
+    }
+
+    public function anyBreakTimeLog(){
+        $data['startDate'] = Input::get('s_date');
+        $data['endDate'] = Input::get('e_date');
+        $data['id'] = Input::get('id');
+        $data['userInfo'] = \App\User::find($data['id']);
+        $data['breakLogs'] = DB::table('user_breaks')
+            ->select(
+                'id',
+                'user_id',
+                'break_start',
+                'break_end',
+                DB::raw('TIMEDIFF(break_end, break_start) AS break_duration')
+            )
+            ->where('user_id', $data['id'])
+            ->where('break_start', '>=', $data['startDate'].' 00:00:00')
+            ->where('break_start', '<=', $data['endDate'].' 23:59:59')
+            ->orderBy('break_start', 'ASC')
+            ->get();
+
+        // ✅ Calculate total break duration
+        $totalSeconds = 0;
+        foreach ($data['breakLogs'] as $log) {
+            if ($log->break_duration) {
+                list($h, $m, $s) = explode(':', $log->break_duration);
+                $totalSeconds += ($h * 3600) + ($m * 60) + $s;
+            }
+        }
+        // Format to HH:MM:SS
+        $hours = floor($totalSeconds / 3600);
+        $minutes = floor(($totalSeconds % 3600) / 60);
+        $seconds = $totalSeconds % 60;
+        $data['totalBreakDuration'] = sprintf('%02d:%02d:%02d', $hours, $minutes, $seconds);
+
+        //return $data['totalBreakDuration'];
+        //return $data['breakLogs'];
+        //return auth()->user()->user_label;
+
+        $data['allDate'] = $this->getDatesFromRange($data['startDate'], $data['endDate']);
+
+        return view('Company.breakTimeLog', $data);
+    }
+
+    function getWeekendDates($startDate, $endDate)
+    {
+        $dateRange = $this->getDatesFromRange($startDate, $endDate); // Assuming this returns an array of dates
+
+        $weekends = array_values(array_filter($dateRange, function ($date) {
+            $dayOfWeek = Carbon::parse($date)->dayOfWeek;
+            return in_array($dayOfWeek, [Carbon::SATURDAY, Carbon::SUNDAY]); // Get only Saturdays & Sundays
+        }));
+
+        return $weekends;
+    }
+
+    function getUploadAttendance(){
+        return view('Company.uploadAttendanceExcel');
+    }
+
+    public function postUploadAttendanceLog(Request $request)
+    {
+        // Define validation rules
+        $rules = [
+            'attendance_log' => 'required|mimes:csv,txt|max:2048'
+        ];
+
+        // Validate request
+        $validator = Validator::make(Input::all(), $rules); // ✅ Using Input::all() for Laravel 5
+
+        if ($validator->fails()) {
+            Session::flash('flashError', $validator->messages()->first());
+            return redirect('company/upload-attendance');
+        }
+
+        // Get the uploaded file
+        $file = Input::file('attendance_log'); // ✅ Using Input::file() for Laravel 5
+
+        if (!$file) {
+            return back()->with('flashError', 'No file was uploaded.');
+        }
+
+        $handle = fopen($file->getRealPath(), 'r'); // ✅ Using getRealPath() for file handling
+
+        if (!$handle) {
+            return back()->with('flashError', 'Could not open the file.');
+        }
+
+        $header = fgetcsv($handle); // Read CSV headers
+
+        DB::beginTransaction();
+        try {
+            while (($row = fgetcsv($handle, 1000, ",")) !== false) {
+                //return $row;
+                $userName = trim($row[1]);  // Employee name
+                $inTime = trim($row[2]);    // Check-in time
+                $outTime = trim($row[3]);   // Check-out time
+                $date = date('Y-m-d', strtotime(trim($row[4])));      // Date
+
+                $formattedInTime = date('Y-m-d H:i:s', strtotime("$date $inTime"));
+                $formattedOutTime = date('Y-m-d H:i:s', strtotime("$date $outTime"));
+
+                $user = User::where('username', $userName)->first();
+
+                if ($user) {
+
+                    $existingRecords = UserDetails::where('user_id', $user->id)
+                        ->where('user_name', $user->username)
+                        ->where('login_date', $date)
+                        ->orderBy('id') // Ensure deterministic order
+                        ->get();
+                    if (!$existingRecords->isEmpty()) {
+                        // Update the first matched record
+                        $primary = $existingRecords->first();
+                        $primary->login_time = $formattedInTime;
+                        $primary->logout_time = $formattedOutTime;
+                        $primary->login_date = $date;
+                        $primary->logout_date = $date;
+                        $primary->status = 'Present';
+                        $primary->save();
+
+                        // Delete all other duplicates
+                        try {
+                            $duplicateIds = $existingRecords->pluck('id')->slice(1)->values()->toArray();
+                            foreach($duplicateIds as $item){
+                                UserDetails::find($item)->delete();
+                            }
+                        } catch (\Throwable $e) {
+                            \Log::error('Delete error: ' . $e->getMessage());
+                        }
+                    }else{
+                        // Insert new record
+                        $newRecord = new UserDetails();
+                        $newRecord->user_id = $user->id;
+                        $newRecord->user_name = $user->username;
+                        $newRecord->login_time = $formattedInTime;
+                        $newRecord->logout_time = $formattedOutTime;
+                        $newRecord->login_date = $date;
+                        $newRecord->logout_date = $date;
+                        $newRecord->status = 'Present';
+                        $newRecord->save();
+                    }
+                }
+            }
+            DB::commit();
+            fclose($handle);
+            Session::flash('success', 'Attendance imported successfully!');
+            return back();
+
+        }catch (\Exception $e){
+            DB::rollBack();
+            fclose($handle);
+            \Log::error('Attendance Upload Failed: ' . $e->getMessage());
+            Session::flash('error', 'Failed to import attendance. Please check the file or contact support.');
+            return back();
+        }
+
+    }
+
+    public function getDailyAttendanceReport(){
+        return view('Company.dailyAttendanceReportRequest');
+    }
+    public function postDailyAttendanceReport(){
+        $date = Input::get('date');
+        $inactiveUserIds = User::where('status', 0)->where('user_label', 2)->lists('id');
+        //return $allActiveUserIds;
+        $breakReport = DB::table('user_breaks')
+            ->select('user_id', DB::raw('SUM(TIMESTAMPDIFF(SECOND, break_start, break_end)) as break_seconds'))
+            ->where('break_start', '>=', $date . ' 00:00:00')
+            ->where('break_end', '<=', $date . ' 23:59:59')
+            ->groupBy('user_id')
+            ->get();
+        //return $breakReport;
+        // Convert to key-value array (for Laravel 5.1)
+        $breaksByUser = [];
+        foreach ($breakReport as $break) {
+            $breaksByUser[$break->user_id] = $break->break_seconds;
+        }
+        //return $breaksByUser;
+
+
+        $attendanceReport = UserDetails::
+        select(DB::raw('timediff(logout_time,login_time) as timediff'),
+            'user_name', 'login_date', 'logout_date', 'id', 'login_time', 'logout_time', 'user_id')
+            ->whereHas('User', function ($q) {
+                $q->where('company_id', Auth::user()->company_id);
+            })
+            ->whereNotIn('user_id', $inactiveUserIds)
+            ->where('login_date', '=', $date)
+            ->orderBy('id', 'ASC')
+            ->get();
+        //return $attendanceReport;
+        $reports = [];
+        //return $attendanceReport;
+        foreach ($attendanceReport as $report) {
+            $userId = $report->user_id;
+
+            if (!isset($reports[$userId])) {
+                $reports[$userId] = [
+                    'id' => $report->id,
+                    'user_id' => $userId,
+                    'username' => $report->User->username,
+                    'totalSeconds' => 0, // Reset for each user
+                    'totalBreakSeconds' => 0,
+                ];
+            }
+
+            // Extract time components
+            $timeParts = explode(":", $report->timediff);
+            $hours = intval($timeParts[0]);
+            $minutes = intval($timeParts[1]);
+            $seconds = intval($timeParts[2]);
+
+            // Convert everything to seconds and accumulate only for the current user
+            $reports[$userId]['totalSeconds'] += ($hours * 3600) + ($minutes * 60) + $seconds;
+
+            // Add break time if exists
+            if (isset($breaksByUser[$userId])) {
+                $reports[$userId]['totalBreakSeconds'] = (int) $breaksByUser[$userId];
+            }
+        }
+        foreach ($reports as &$report) {
+
+            $report['first_login'] = $attendanceReport->where('user_id', $report['user_id'])->first()->login_time;
+            $report['last_logout'] = $attendanceReport->where('user_id', $report['user_id'])->last()->logout_time;
+            // Convert total working time
+            $workHours = floor($report['totalSeconds'] / 3600);
+            $workMinutes = floor(($report['totalSeconds'] % 3600) / 60);
+            $report['workingTime'] = sprintf("%d:%02d", $workHours, $workMinutes);
+
+            // Convert break time
+            $breakHours = floor($report['totalBreakSeconds'] / 3600);
+            $breakMinutes = floor(($report['totalBreakSeconds'] % 3600) / 60);
+            $report['breakTime'] = sprintf("%d:%02d", $breakHours, $breakMinutes);
+
+            // Calculate Active Time (Total Time - Break Time)
+            $activeSeconds = max(0, $report['totalSeconds'] - $report['totalBreakSeconds']);
+            $activeHours = floor($activeSeconds / 3600);
+            $activeMinutes = floor(($activeSeconds % 3600) / 60);
+
+            $report['activeSeconds'] = $activeSeconds;
+            $report['activeTime'] = sprintf("%d:%02d", $activeHours, $activeMinutes);
+
+        }
+        unset($report);
+        $reports = collect($reports)->values()->toArray();
+        usort($reports, function ($a, $b) {
+            return $b['activeSeconds'] <=> $a['activeSeconds'];
+        });
+        $presentUserIds =  collect($reports)->lists('user_id')->toArray();
+        $userIdsToBeSkipped = array_merge($inactiveUserIds->toArray(), $presentUserIds);
+        $absentUserLists  = User::select('id', 'username')
+            ->whereNotIn('id', $userIdsToBeSkipped)
+            ->orderBy('username', 'asc')
+            ->get();
+        foreach ($absentUserLists as $absentUser) {
+            $reports[] = [
+                'id' => null,
+                'user_id' => $absentUser->id,
+                'username' => $absentUser->username,
+                'first_login'=>null,
+                'last_logout'=> null,
+                'totalSeconds' => 0,
+                'totalBreakSeconds' => 0,
+                'workingTime' => '00:00:00',
+                'breakTime' => '00:00:00',
+                'activeSeconds' => 0,
+                'activeTime' => '00:00:00',
+            ];
+        }
+        $data['reports'] = $reports;
+        $data['date'] = $date;
+        //return $data['reports'];
+        return view('Company.dailyAttendanceReport', $data);
+    }
+
+    public function getBreakLogTimeEditRequest($logId){
+        $data['log'] =  UserBreak::find($logId);
+        return view('Company.breakTimeLogEditRequest', $data);
+    }
+    public function postBreakLogTimeEditRequest($logId){
+        $log = UserBreak::find($logId);
+        $current_from_date = Carbon::parse($log->break_start)->toDateString();
+        $current_to_date = Carbon::parse($log->break_end)->toDateString();
+        if (!$log) {
+            return redirect()->back()->with('flashError', 'Break log not found.');
+        }
+
+        //return $log;
+
+        // Validate request (optional but recommended)
+        $validator = Validator::make(Input::all(), [
+            'from' => 'required|date',
+            'to' => 'required|date|after:from',
+        ]);
+
+        if ($validator->fails()) {
+            Session::flash('error', 'Failed to update log');
+            return back()->withErrors($validator)->withInput();
+        }
+
+        // Update break times
+        $log->break_start = Input::get('from');
+        $log->break_end = Input::get('to');
+        $log->save();
+
+        Session::flash('success', 'Break log updated successfully!');
+        return redirect('company/break-time-log?s_date='.$current_from_date.'&e_date='.$current_to_date.'&id='.$log->user_id);
+    }
+    public function postBreakLogDelete($id)
+    {
+        $log = UserBreak::find($id);
+
+        if (!$log) {
+            Session::flash('error', 'Failed to delete log');
+            return redirect()->back();
+        }
+
+        $log->delete();
+        Session::flash('success', 'Break log deleted successfully!');
+        return redirect()->back();
     }
 
 }

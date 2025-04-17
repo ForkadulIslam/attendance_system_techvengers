@@ -22,7 +22,8 @@ class UserDetails extends Model
             $query = $query->where('user_id', $UserId);
         else
             $query = $query->where('user_id', Auth::user()->id);
-        return $query->orderBy('id', 'DESC')
+        return  $query->orderBy('login_date', 'DESC')
+            ->orderBy('login_time', 'DESC')
             ->first();
     }
 

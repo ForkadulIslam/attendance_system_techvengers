@@ -2,24 +2,87 @@
 @section('content')
 
 <?php
-        $totalHours = 0;
-        $totalMinutes = 0;
-        $totalSeconds = 0;
-        $reports = array();
-foreach($attendanceReport as $report){
-    if (!isset($reports[$report->user_id])){
-        $totalHours = 0;
-    $totalMinutes = 0;
-    $totalSeconds = 0;
-        }
-    $reports[$report->user_id]['id'] = $report->id;
-    $reports[$report->user_id]['user_id'] = $report->user_id;
-    $reports[$report->user_id]['username'] = $report->User->username;
-    $reports[$report->user_id]['time'] = explode(":", $report->timediff);;
-    $reports[$report->user_id]['workingHours'] = ($totalHours = $totalHours +  $reports[$report->user_id]['time'][0]);
-    $reports[$report->user_id]['workingMinutes'] = ($totalMinutes = $totalMinutes +  $reports[$report->user_id]['time'][1]);
-    $reports[$report->user_id]['workingSeconds'] = ($totalSeconds = $totalSeconds +  $reports[$report->user_id]['time'][2]);
-        }
+use App\Leave;
+use App\User;
+$totalHours = 0;
+$totalMinutes = 0;
+$totalSeconds = 0;
+$reports = [];
+
+
+// Generate all dates between start and end date
+
+
+foreach ($attendanceReport as $report) {
+    $userId = $report->user_id;
+
+    if (!isset($reports[$userId])) {
+        $reports[$userId] = [
+            'id' => $report->id,
+            'user_id' => $userId,
+            'username' => $report->User->username,
+            'totalSeconds' => 0, // Reset for each user
+            'totalBreakSeconds' => 0,
+        ];
+    }
+
+    // Extract time components
+    $timeParts = explode(":", $report->timediff);
+    $hours = intval($timeParts[0]);
+    $minutes = intval($timeParts[1]);
+    $seconds = intval($timeParts[2]);
+
+    // Convert everything to seconds and accumulate only for the current user
+    $reports[$userId]['totalSeconds'] += ($hours * 3600) + ($minutes * 60) + $seconds;
+
+    // Add break time if exists
+    if (isset($breakReport[$userId])) {
+        $reports[$userId]['totalBreakSeconds'] = (int) $breakReport[$userId];
+    }
+}
+
+
+// Convert seconds to HH:MM:SS format
+foreach ($reports as &$report) {
+
+    // Convert total working time
+    $workHours = floor($report['totalSeconds'] / 3600);
+    $workMinutes = floor(($report['totalSeconds'] % 3600) / 60);
+    $workSeconds = $report['totalSeconds'] % 60;
+    $report['workingTime'] = sprintf("%d:%02d", $workHours, $workMinutes);
+
+    // Convert break time
+    $breakHours = floor($report['totalBreakSeconds'] / 3600);
+    $breakMinutes = floor(($report['totalBreakSeconds'] % 3600) / 60);
+    $breakSeconds = $report['totalBreakSeconds'] % 60;
+    $report['breakTime'] = sprintf("%d:%02d", $breakHours, $breakMinutes);
+
+    // Calculate Active Time (Total Time - Break Time)
+    $activeSeconds = max(0, $report['totalSeconds'] - $report['totalBreakSeconds']);
+    $activeHours = floor($activeSeconds / 3600);
+    $activeMinutes = floor(($activeSeconds % 3600) / 60);
+    $activeSec = $activeSeconds % 60;
+    $report['activeSeconds'] = $activeSeconds;
+    $report['activeTime'] = sprintf("%d:%02d", $activeHours, $activeMinutes);
+
+    $report['presentDays'] = collect($attendanceReport)->where('user_id', $report['user_id'])->groupBy('login_date')->count();
+    $userLeave = $approvedLeaves->where('id',$report['user_id'])->first();
+    $report['approvedLeave'] = ($userLeave) ? count($userLeave->approvedLeave) : 0;
+    $report['absentDays'] = max(0, count($allDates) - ($report['presentDays'] + $report['approvedLeave']));
+
+    // --- New: Average Break Time ---
+    if ($report['presentDays'] > 0) {
+        $avgBreakSeconds = round($report['totalBreakSeconds'] / $report['presentDays']);
+        $report['averageBreakTime'] = gmdate("H:i", $avgBreakSeconds);
+
+        $avgActiveSeconds = round($activeSeconds / $report['presentDays']);
+        $report['averageActiveTime'] = gmdate("H:i", $avgActiveSeconds);
+    } else {
+        $report['averageBreakTime'] = '00:00';
+        $report['averageActiveTime'] = '00:00';
+    }
+}
+unset($report);
 ?>
     <div>
         <ul class="breadcrumb">
@@ -48,6 +111,15 @@ foreach($attendanceReport as $report){
                         <td>
                             Time
                         </td>
+                        <td>Break Time</td>
+                        <td>
+                            Active Hour
+                        </td>
+                        <td>AVG Break Time</td>
+                        <td>AVG Active Hour</td>
+                        <td>Present Days</td>
+                        <td>Absent Days</td>
+                        <td>Approved Leave</td>
                     </tr>
                     </thead>
                     <tbody>
@@ -57,29 +129,38 @@ foreach($attendanceReport as $report){
                         <td>
                             <?php echo $report['username']?>
                         </td>
+                        <td data-order="{{ $report['totalSeconds'] }}">
+                            <?php
+                            echo $report['workingTime'];
+                            ?>
+                        </td>
+                        <td data-order="{{ $report['totalBreakSeconds'] }}"><?php echo $report['breakTime']; ?></td>
+
+                        <td data-order="{{ $report['activeSeconds'] }}">
+                            <?php
+                            echo $report['activeTime']
+                            ?>
+                        </td>
                         <td>
                             <?php
-                                $hours = $report['workingHours'];
-                                $minutes = $report['workingMinutes'];
-                                $seconds = $report['workingSeconds'];
-                                if($report['workingMinutes']/60){
-                                $hours = intval($hours + $report['workingMinutes']/60);
-                                $minutes=intval($report['workingMinutes']%60);
-                                }
-                                if($report['workingSeconds']/60){
-                                $minutes = intval($minutes + $report['workingSeconds']/60);
-                                $seconds=intval($report['workingSeconds']%60);
-                                }
-                                if(intval($hours) < 10)
-                                $hours = '0'.intval($hours);
-                                if(intval($minutes) < 10)
-                                $minutes = '0'.intval($minutes);
-                                if(intval($seconds) < 10)
-                                $seconds = '0'.intval($seconds);
-                                echo $hours.':'.$minutes.':'.$seconds;
+                                echo $report['averageBreakTime'];
                             ?>
-
                         </td>
+                        <td>
+                            <?php
+                            echo $report['averageActiveTime'];
+                            ?>
+                        </td>
+                        <td>
+                            {{ $report['presentDays'] }}
+                        </td>
+                        <td>
+                            {{ $report['absentDays'] }}
+                        </td>
+                        <td>
+                            {{ $report['approvedLeave'] }}
+                        </td>
+
                     </tr>
                     <?php } ?>
                     </tbody>
@@ -96,7 +177,8 @@ foreach($attendanceReport as $report){
     <script type="text/javascript" language="javascript" class="init">
         $(document).ready(function() {
             $('#example').DataTable( {
-                dom: 'T<"clear">lfrtip'
+                dom: 'T<"clear">lfrtip',
+                pageLength: 40
             } );
         } );
     </script>

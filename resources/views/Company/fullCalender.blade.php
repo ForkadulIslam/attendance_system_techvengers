@@ -3,9 +3,17 @@
     <?php
     $currentReport = current($attendanceReport);
     ?>
-    <div id="content" class="span12" style="margin-left: 0px">
-    <div id='calendar'>
-    </div>
+    <div class="row-fluid">
+        <div id="content" class="box span12" style="margin-left: 0px">
+            <div class="box-header well" data-original-title>
+                <h2><i class="icon-user"></i> {!! $userInfo->username !!} [From <?php echo $startDate.' to '.$endDate ?>]</h2>
+
+            </div>
+            <div class="box-content">
+                <div id='calendar'>
+                </div>
+            </div>
+        </div>
     </div>
 @endsection
 
@@ -32,7 +40,8 @@
                         id: "<?php echo $attendanceReport['id']?>",
                         title: "<?php echo $attendanceReport['status']?>",
                         start: "<?php echo $attendanceReport['login_time']?>",
-                        end: "<?php echo $attendanceReport['logout_time']?>"
+                        end: "<?php echo $attendanceReport['logout_time']?>",
+                        color: "<?php echo $attendanceReport['status'] === 'Present' ? '#28a745' : ($attendanceReport['status'] === 'On Leave' ? '#007bff' : '#dc3545' ) ?>"
                     },
                 <?php
                      }

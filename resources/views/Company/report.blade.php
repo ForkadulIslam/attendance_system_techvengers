@@ -1,135 +1,117 @@
 @extends('Company.CompanyLayout')
 @section('content')
 
-<div>
-    <ul class="breadcrumb">
-        <li>
-            <a href="{!! URL::to('company') !!}">Home</a> <span class="divider">/</span>
-        </li>
-        <li>
-            <a href=''{!! URL::to("company/table-report") !!}'>Table Report</a>
-        </li>
+    <div>
+        <ul class="breadcrumb">
+            <li>
+                <a href="{!! URL::to('company') !!}">Home</a> <span class="divider">/</span>
+            </li>
+            <li>
+                <a href=''{!! URL::to("company/table-report") !!}'>Table Report</a>
+            </li>
 
-    </ul>
-</div>
-<div class="row-fluid sortable">
-    <div class="box span12">
-        <div class="box-header well" data-original-title>
-            <h2><i class="icon-user"></i> <?php echo $userInfo->username?>'s Attendance List from <?php echo $startDate.' to '.$endDate ?></h2>
+        </ul>
+    </div>
+    <div class="row-fluid sortable">
+        <div class="box span12">
+            <div class="box-header well" data-original-title>
+                <h2><i class="icon-user"></i> <?php echo $userInfo->username?>'s Attendance List
+                    from <?php echo $startDate . ' to ' . $endDate ?></h2>
 
-        </div>
-        <div class="box-content">
-            <table id="example" class="display" cellspacing="0" width="100%">
-                <thead>
-                <tr>
-                    <td>
-                        Date
-                    </td>
-                    <td>
-                        In Time
-                    </td>
-                    <td>
-                        Out Time
-                    </td>
-                    <td>
-                        Working Hour
-                    </td>
-                    <td>
-                        Status
-                    </td>
-                </tr>
-                </thead>
-                <tbody>
-                <?php
-                  foreach($allDate as $date):
+            </div>
+            <div class="box-content">
+                <table id="example" class="display" cellspacing="0" width="100%">
+                    <thead>
+                    <tr>
+                        <td>Date</td>
+                        <td>In Time</td>
+                        <td>Out Time</td>
+                        <td>Working Hours</td>
+                        <td>Break Time</td>
+                        <td>Active Hour</td>
+                        <td>Status</td>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($allDate as $date): ?>
+                    <?php
+                    // Get attendance record for the day
+                    $attendance = array_filter($attendanceReport, function ($ar) use ($date) {
+                        return $ar['login_date'] == $date;
+                    });
+                    $attendance = reset($attendance); // Get first matched record
 
-                      $arr = array_filter($attendanceReport, function($ar) use ($date) {
-                          return ($ar['login_date'] == $date);
-                      });
-                      $arr = array_merge_recursive($arr);
 
-                      $holiday = array_filter($allHoliday, function($ar) use ($date) {
-                          return ($ar['holiday'] == $date);
-                      });
-                      $holiday = array_merge_recursive($holiday);
+                    // Get holiday and leave status
+                    $holiday = array_filter($allHoliday, fn($h) => $h['holiday'] == $date);
+                    $leave = array_filter($allLeave, fn($l) => $l['leave_date'] == $date);
 
-                      $leave = array_filter($allLeave, function($ar) use ($date) {
-                          return ($ar['leave_date'] == $date);
-                      });
-                      $leave = array_merge_recursive($leave);
-                      $i = 0;
-                          foreach($arr as $arr){
-                              $i++;
-                ?>
-                <tr>
-                    <td>
-                        <?php if($i == 1) echo $date;
-                        else
-                            echo "<span style='display: none'>$date</span>";
-                        ?>
-                    </td>
-                    <td>
-                        <?php if ($arr)
-                            echo $arr['login_time'];
-                            else echo 'absent';
-                        ?>
-                    </td>
-                    <td>
-                        <?php
-                        if ($arr && $arr['logout_time'] != '0000-00-00 00:00:00')  echo $arr['logout_time'];
-                        else
-                            echo 'Not Yet Punch Out';
-                        ?>
-                    </td>
-                    <td>
-                        <?php if ($arr && $arr['logout_time'] != '0000-00-00 00:00:00'){
-                            echo $arr['timediff'];
-                        }
-                        ?>
-                    </td>
-                    <td>
-                        <?php if ($arr && $i == 1){
-                            if(is_array($holiday) && !empty($holiday))
-                                echo 'Holiday';
-                            elseif(is_array($leave) && !empty($leave))
-                                echo 'Leave';
-                            else
-                                echo $arr['status'];
-                        }
+                    $dateAttendanceType = null;
+                    if (!empty($holiday)) {
+                        $dateAttendanceType =  'Holiday';
+                    } elseif (!empty($leave)) {
+                        $dateAttendanceType =  'Leave';
+                    } elseif ($attendance) {
+                        $dateAttendanceType =  'Present';
+                    } else if(in_array($date, $weekends)){
+                        $dateAttendanceType = 'Weekend';
+                    } else {
+                        $dateAttendanceType =  'Absent';
+                    }
 
-                        ?>
-                    </td>
-                </tr>
-                <?php
-                } ?>
-
-                <?php $i =0;
-                if(empty($arr)){
-                ?>
-                <tr>
-                    <td>
-                        <?php echo $date?>
-                    </td>
-                    <td></td>
-                    <td></td>
-                    <td></td>
-                    <td><?php
-                        if(is_array($holiday) && !empty($holiday))
-                            echo 'Holiday';
-                        elseif(is_array($leave) && !empty($leave))
-                            echo 'Leave';
-                            else
-                            echo 'Absent';
-                        ?></td>
-                </tr>
-
-                <?php } endforeach;?>
-
-                </tbody>
-            </table>
-        </div>
-    </div><!--/span-->
-</div>
+                    ?>
+                    <tr>
+                        <td><?= $date ?></td>
+                        <td><?= $attendance ? \Carbon\Carbon::parse($attendance['first_login'])->toDateTimeString() : '-' ?></td>
+                        <td>
+                            <?php
+                                if($dateAttendanceType == 'Present' && $attendance['last_logout'] != '0000-00-00 00:00:00'){
+                                    echo \Carbon\Carbon::parse($attendance['last_logout'])->toDateTimeString();
+                                }else if($dateAttendanceType == 'Present' && $attendance['last_logout'] == '0000-00-00 00:00:00'){
+                                    echo "Not Yet Punch Out";
+                                }else{
+                                    echo '-';
+                                }
+                            ?>
+                        </td>
+                        <td>
+                            <a href="{!! URL::to('company/attendance-log') !!}?s_date=<?php echo $date ?>&e_date=<?php echo $date ?>&id=<?php echo $userInfo->id ?>">
+                                <?= $attendance ? $attendance['total_work_time'] : '00:00:00' ?>
+                            </a>
+                        </td>
+                        <td>
+                            <a href="{!! URL::to('company/break-time-log') !!}?s_date=<?php echo $date ?>&e_date=<?php echo $date ?>&id=<?php echo $userInfo->id ?>">
+                                <?= $attendance ? $attendance['total_break_time'] : '00:00:00' ?>
+                            </a>
+                        </td>
+                        <td>
+                            <?php
+                            if ($attendance) {
+                                $workTimeInSeconds = strtotime($attendance['total_work_time']) - strtotime("00:00:00");
+                                $breakTimeInSeconds = strtotime($attendance['total_break_time']) - strtotime("00:00:00");
+                                if($attendance['total_break_time'] != null){
+                                    $activeTimeInSeconds = max(0, $workTimeInSeconds - $breakTimeInSeconds); // Ensure non-negative
+                                }else{
+                                    $activeTimeInSeconds = $workTimeInSeconds;
+                                }
+                                echo gmdate("H:i:s", $activeTimeInSeconds);
+                            } else {
+                                echo '00:00:00';
+                            }
+                            ?>
+                        </td>
+                        <td>
+                            <?php
+                            echo $dateAttendanceType;
+                            ?>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div><!--/span-->
+    </div>
 
 @endsection
 @section('jsBottom')
@@ -138,10 +120,11 @@
     {!! HTML::style('css/jquery.dataTables.css') !!}
     {!! HTML::style('css/dataTables.tableTools.css') !!}
     <script type="text/javascript" language="javascript" class="init">
-        $(document).ready(function() {
-            $('#example').DataTable( {
-                dom: 'T<"clear">lfrtip'
-            } );
-        } );
+        $(document).ready(function () {
+            $('#example').DataTable({
+                dom: 'T<"clear">lfrtip',
+                pageLength: 31
+            });
+        });
     </script>
 @endsection

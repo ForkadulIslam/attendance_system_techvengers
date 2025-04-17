@@ -56,7 +56,7 @@
 
     <div class="box span4">
         <div class="box-header well" data-original-title>
-            <h2><i class="icon-user"></i> Member Activity</h2>
+            <h2><i class="icon-user"></i> Attendance Log</h2>
 
         </div>
         <div class="box-content">
@@ -79,34 +79,71 @@
                     <label for="datepick4" class="span2 control-label"></label>
                     <div class="span6">
                         <button onclick="window.open('{!! URL::to("user/report") !!}?s_date=' + datepicker.value + '&e_date=' + datepicker2.value)" type="button" class="btn btn-primary">
-                            My Report</button>
+                            Run Report</button>
                     </div>
                 </div>
 
             </div>
         </div>
     </div>
+
+    <div class="box span4">
+        <div class="box-header well" data-original-title>
+            <h2><i class="icon-user"></i> Break-time Log</h2>
+
+        </div>
+        <div class="box-content">
+            <div class="box-content">
+
+
+                <div class="form-group span12">
+                    <label for="datepick2" class="span2 control-label">Date</label>
+                    <div class="span6">
+                        <input type="text" readonly id="datepicker3" class="datepicker" name="first_date" value="<?php echo date('Y-m-d', time()); ?>">
+                    </div>
+                </div>
+                <div class="form-group span12">
+                    <label for="datepick4" class="span2 control-label">To</label>
+                    <div class="span6">
+                        <input type="text" readonly id="datepicker4" class="datepicker2" name="second_date" value="<?php echo date('Y-m-d', time()); ?>">
+                    </div>
+                </div>
+                <div class="form-group span12">
+                    <label for="datepick4" class="span2 control-label"></label>
+                    <div class="span6">
+                        <button onclick="window.open('{!! URL::to("user/break-time-log") !!}?s_date=' + datepicker3.value + '&e_date=' + datepicker4.value)" type="button" class="btn btn-primary">
+                            Check Report</button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
 </div><!--/span-->
 
 <div class="row-fluid sortable">
-    <div class="box span4">
+    <div class="box span3">
         <div class="box-header well" data-original-title>
-            <h2><i class="icon-list-alt"></i>  Active</h2>
+            <h2><i class="icon-list-alt"></i>  Punched IN <small>{!! count($activityWiseUserList['punchedInUser']) !!}</small></h2>
 
         </div>
         <div class="box-content">
             <ul>
                 @foreach($activityWiseUserList['punchedInUser'] as $user)
-                <li>{!! $user['name'] !!} <small>{!! $user['working_hours'] !!}</small></li>
+                    <li>
+                        {!! $user['name'] !!} <small>{!! $user['working_hours'] !!}</small>
+                        <span class="badge badge-brown pull-right">{!! $user['logged_in_at'] !!}</span>
+                    </li>
                 @endforeach
             </ul>
         </div>
     </div>
     <!--/span-->
 
-    <div class="box span4">
+    <div class="box span3">
         <div class="box-header well" data-original-title>
-            <h2><i class="icon-list-alt"></i>  Break</h2>
+            <h2><i class="icon-list-alt"></i>  Break <small>{!! count($activityWiseUserList['onBreakUser']) !!}</small></h2>
 
         </div>
         <div class="box-content">
@@ -114,7 +151,7 @@
                 @foreach($activityWiseUserList['onBreakUser'] as $user)
 
                     <?php
-                    list($hours, $minutes, $seconds) = explode(':', $user['break_duration']);
+                    list($hours, $minutes) = explode(':', $user['break_duration']);
                     $totalMinutes = ($hours * 60) + $minutes;
                     $highlightClass = $totalMinutes > 30 ? 'breakTimeHighlighter' : '';
                     ?>
@@ -122,21 +159,58 @@
                     <li class="{{ $highlightClass }}">
                         {!! $user['name'] !!}
                         <small>{!! $user['break_duration'] !!}</small>
+                        <small class="badge badge-brown pull-right">{!! $user['total_break_duration'] !!}</small>
                     </li>
                 @endforeach
             </ul>
         </div>
     </div>
 
-    <div class="box span4">
+    <div class="box span2">
         <div class="box-header well" data-original-title>
-            <h2><i class="icon-list-alt"></i> Inactive</h2>
+            <h2><i class="icon-list-alt"></i> Punched OUT <small>{!! count($activityWiseUserList['punchedOutUser']) !!}</small></h2>
+
+        </div>
+        <div class="box-content">
+            <ul>
+                @foreach($activityWiseUserList['punchedOutUser'] as $user)
+                    <li>
+                        {!! $user['name'] !!}
+                        <span class="badge badge-brown pull-right">{!! $user['logged_out_at'] !!}</span>
+                    </li>
+                @endforeach
+            </ul>
+        </div>
+    </div>
+
+    <div class="box span2">
+        <div class="box-header well" data-original-title>
+            <h2><i class="icon-list-alt"></i> On Leave <small>{!! count($activityWiseUserList['onLeaveUser']) !!}</small></h2>
+
+        </div>
+        <div class="box-content">
+            <ul>
+                @foreach($activityWiseUserList['onLeaveUser'] as $user)
+                    <li>
+                        {!! $user->user->username !!}
+                    </li>
+                @endforeach
+            </ul>
+        </div>
+    </div>
+    <div class="box span2">
+        <div class="box-header well" data-original-title>
+            <h2><i class="icon-list-alt"></i> Absent <small>{!! count($activityWiseUserList['notPunchedInUser']) !!}</small></h2>
 
         </div>
         <div class="box-content">
             <ul>
                 @foreach($activityWiseUserList['notPunchedInUser'] as $user)
-                    <li>{!! $user !!}</li>
+                    <li>
+                        <a style="font-size: 13px; color:#666;" href="#">
+                            {!! $user['name'] !!}
+                        </a>
+                    </li>
                 @endforeach
             </ul>
         </div>
@@ -214,6 +288,9 @@
 @endif
 
 <script>
+    setInterval(function() {
+        location.reload();
+    }, 30000);
     function confirmPunch(url, status) {
         Swal.fire({
             title: "Are you sure?",
