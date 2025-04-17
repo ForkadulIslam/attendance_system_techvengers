@@ -14,29 +14,27 @@
     <div class="row-fluid sortable">
         <div class="box span12">
             <div class="box-header well" data-original-title>
-                <h2><i class="icon-edit"></i> Create Category</h2>
+                <h2><i class="icon-edit"></i> Update Category</h2>
 
             </div>
             <div class="box-content">
-                    {!! Form::open(array('id' => 'category', 'accept-charset' => 'utf-8', 'class' => 'form-horizontal',  'ng-submit'=>'save($event)')) !!}
+                    {!! Form::open(array('id' => 'category', 'accept-charset' => 'utf-8', 'class' => 'form-horizontal', 'url'=>URL::to('company/update-leave-category', $leaveCategory->id))) !!}
                     <fieldset>
                         <div class="control-group">
                             <label class="control-label" for="catagory">Category Name</label>
                             <div class="controls">
-                                <input type="text" ng-model="category.name" required class="input-xlarge input" name="category" id="category_name" placeholder="Catagory Name">
-                            <span style="margin-left: 5%;color:red" ng-if="checkExist()">{kp checkExist() kp}</span>
+                                <input type="text" required class="input-xlarge input" name="category" id="category_name" placeholder="Catagory Name" value="{!! $leaveCategory->category !!}">
                             </div>
                         </div>
 
                         <div class="control-group">
                             <label class="control-label" for="catagory_num">Maximum in a Year</label>
                             <div class="controls">
-                                <input type="text" ng-model="category.max" required class="input-xlarge number" name="category_num" id="category_num" placeholder="Maximum in a Year">
-                                {{--<input type="hidden" name="extraAngular">--}}
+                                <input type="text" required class="input-xlarge number" name="category_num" id="category_num" placeholder="Maximum in a Year" value="{!! $leaveCategory->category_num !!}">
                             </div>
                         </div>
                         <div class="form-actions">
-                            <button  type="submit"  class="btn btn-success">Create</button>
+                            <button  type="submit"  class="btn btn-success">Update</button>
                             <button type="reset" class="btn">Cancel</button>
                         </div>
                     </fieldset>

@@ -27,6 +27,7 @@ class LoginController extends Controller
 
     public function postCheckUser()
     {
+
         $credentials = array(
             'username' => Request::input('username'),
             'password' => Request::input('password'),

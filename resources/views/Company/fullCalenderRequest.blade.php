@@ -58,7 +58,6 @@
         $(function() {
             $( "#from" ).datepicker({
                 dateFormat:'yy-mm-dd',
-                defaultDate: "+1w",
                 changeMonth: true,
                 numberOfMonths: 1,
                 onClose: function( selectedDate ) {
@@ -67,7 +66,6 @@
             });
             $( "#to" ).datepicker({
                 dateFormat:'yy-mm-dd',
-                defaultDate: "+1w",
                 changeMonth: true,
                 numberOfMonths: 1,
                 onClose: function( selectedDate ) {

@@ -11,6 +11,14 @@
                 <a href="{!! URL::to('user/my-leave') !!}">My Leave</a>
             </li>
         </ul>
+
+        <ul class="breadcrumb">
+            @foreach($leaveBudget as $key=>$leave)
+            <li>
+                <p>{!! $leave['category'] !!}:<span class="divider" style="font-weight: 700; font-size: 15px; color: #009877; padding-left: 0px"> {!! $leave['categoryTotal'] !!}/{!! $leave['categoryBudget'] !!}</span> </p>
+            </li>
+            @endforeach
+        </ul>
     </div>
     <div class="row-fluid sortable">
         <div class="box span12">

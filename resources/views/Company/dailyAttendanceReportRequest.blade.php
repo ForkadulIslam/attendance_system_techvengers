@@ -6,7 +6,7 @@
                 <a href="{!! URL::to('company') !!}">Home</a> <span class="divider">/</span>
             </li>
             <li>
-                <a href=''{!! URL::to("company/report-summery") !!}'>Summery Report</a>
+                <a href=''{!! URL::to("company/daily-attendance-report") !!}'>Daily Attendance Report</a>
             </li>
 
         </ul>
@@ -14,22 +14,15 @@
     <div class="row-fluid sortable">
         <div class="box span12">
             <div class="box-header well" data-original-title>
-                <h2><i class="icon-edit"></i> Summery Report</h2>
-                <a href="{!! URL::to('company/upload-attendance') !!}" class="btn btn-info pull-right">IMPORT ATTENDANCE LOG</a>
+                <h2><i class="icon-edit"></i> Daily attendance report</h2>
             </div>
             <div class="box-content">
-                {!! Form::open(array('role' => 'form', 'id' => 'full-calender', 'accept-charset' => 'utf-8', 'method' => 'post', 'class' => 'form-horizontal', 'url' => 'company/report-summery')) !!}
+                {!! Form::open(array('role' => 'form', 'accept-charset' => 'utf-8', 'method' => 'post', 'class' => 'form-horizontal', 'url' => 'company/daily-attendance-report', 'autocomplete'=>'off')) !!}
                 <fieldset>
                     <div class="control-group">
-                        <label class="control-label" for="company_name">From</label>
+                        <label class="control-label" for="company_name">Date</label>
                         <div class="controls">
-                            <input type="text" id="from" required readonly class="input-xlarge" name="from" id="company_name" placeholder="From Date" >
-                        </div>
-                    </div>
-                    <div class="control-group">
-                        <label class="control-label" for="company_name">To</label>
-                        <div class="controls">
-                            <input type="text" id="to" required readonly class="input-xlarge" name="to" id="company_name" placeholder="To Date" >
+                            <input type="text" id="from" required class="input-xlarge" name="date" placeholder="Date">
                         </div>
                     </div>
                     <div class="form-actions">
@@ -50,18 +43,6 @@
                 //defaultDate: "+1w",
                 changeMonth: true,
                 numberOfMonths: 1,
-                onClose: function( selectedDate ) {
-                    $( "#to" ).datepicker( "option", "minDate", selectedDate );
-                }
-            });
-            $( "#to" ).datepicker({
-                dateFormat:'yy-mm-dd',
-                //defaultDate: "+1w",
-                changeMonth: true,
-                numberOfMonths: 1,
-                onClose: function( selectedDate ) {
-                    $( "#from" ).datepicker( "option", "maxDate", selectedDate );
-                }
             });
         });
     </script>

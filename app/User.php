@@ -93,4 +93,7 @@ class User extends Model implements AuthenticatableContract, CanResetPasswordCon
     {
         return $this->hasMany(UserBreak::class, 'user_id');
     }
+    public function approvedLeave(){
+        return $this->hasMany(Leave::class, 'user_id')->where('leave_status', 1);
+    }
 }

@@ -38,6 +38,7 @@ class UserController extends Controller {
                                     ->where('user_noti_status', 1)
                                     ->count();
         $data['max_info'] = UserDetails::maxRow();
+        //return $data['max_info'];
         if (!empty($data['max_info']) && $data['max_info']->logout_date == '0000-00-00') {
             $data['status'] = 'Punch Out';
         } else {
@@ -81,11 +82,13 @@ class UserController extends Controller {
     public function getPunchOut()
     {
         $last_id = UserDetails::maxRow();
+        $time = time();
+        //return $last_id;
         if($last_id->logout_date = '0000-00-00'){
             $last_id = $last_id->id;
             $punchOut = UserDetails::find($last_id);
-            $punchOut->logout_date = date('Y-m-d', time());
-            $punchOut->logout_time = date('Y-m-d H:i:s', time());
+            $punchOut->logout_date = date('Y-m-d', $time);
+            $punchOut->logout_time = date('Y-m-d H:i:s', $time);
             if($punchOut->save()){
                 Session::forget('timeTrack');
                 Session::flash('punchMessageSuccess', 'You Are Punch Out');
@@ -102,7 +105,9 @@ class UserController extends Controller {
      */
     public function getPunchIn()
     {
+        //return Auth::user()->time;
         $last_id = UserDetails::maxRow();
+        //return date('Y-m-d', time());
         if($last_id) {
             if (Auth::user()->time) {
                 if (date('Y-m-d', time()) == $last_id->login_date) {
@@ -123,6 +128,7 @@ class UserController extends Controller {
         else {
             $status = 'Present';
         }
+        //return $status;
         //return date('Y-m-d H:i:s', time());
         $time = time();
         $punchIn = new UserDetails();
@@ -294,8 +300,44 @@ class UserController extends Controller {
      */
     public function getMyLeave()
     {
+
+        $first_day_this_year = date('Y-01-01');
+        $last_day_this_year  =date('Y-12-t');
+        $leaveByCategory = DB::table('leaves')
+            ->join('leave_categories', 'leaves.leave_category_id', '=', 'leave_categories.id')
+            ->select(DB::raw('count(leaves.leave_category_id) as category_used'),
+                'leave_categories.id','leave_categories.category','leave_categories.category_num')
+            ->where('leaves.leave_date','>=', $first_day_this_year)
+            ->where('leaves.leave_date','<=', $last_day_this_year)
+            ->where('leaves.leave_status', 1)
+            ->where('leaves.user_id', Auth::user()->id)
+            ->where('leave_categories.company_id', Auth::user()->company_id)
+            ->groupBy('leaves.leave_category_id','leave_categories.category','leave_categories.category_num','leave_categories.id')
+            ->get();
+        $allCategory = LeaveCategories::all();
+        $leaveBudget = array();
+        foreach($allCategory as $key=>$category):
+            $searchId = $category->id;
+            $expectedArray = array_filter($leaveByCategory, function($searchArray) use ($searchId) {
+                return ($searchArray->id == $searchId);
+            });
+            $expectedArray = array_merge_recursive($expectedArray);
+            $leaveBudget[$category->id]["id"]=$category->id;
+            $leaveBudget[$category->id]["category"]=$category->category;
+            if(empty($expectedArray)) {
+                $leaveBudget[$category->id]["categoryUsed"] = 0;
+                $leaveBudget[$category->id]["categoryBudget"] = $category->category_num;
+            }
+            else {
+                $leaveBudget[$category->id]["categoryUsed"] = $expectedArray[0]->category_used;
+                $leaveBudget[$category->id]["categoryBudget"] = $category->category_num - $expectedArray[0]->category_used;
+            }
+            $leaveBudget[$category->id]["categoryTotal"] = $category->category_num;
+        endforeach;
+        //return $leaveBudget;
         Leave::where('user_id', Auth::user()->id)->update(array('user_noti_status' => 0));
         $data['myLeave'] = Leave::where('user_id', Auth::user()->id)->get();
+        $data['leaveBudget'] = $leaveBudget;
         return view('Users.myLeave', $data);
     }
 
@@ -328,7 +370,7 @@ class UserController extends Controller {
             ->where('leave_status', 1)
             ->get()
             ->toArray();
-        return view('Users.report',$data);
+        return view('Users.attendanceLog',$data);
 
     }
 
@@ -347,15 +389,100 @@ class UserController extends Controller {
                 return redirect('user/full-calender');
             }
 
-            $data['attendanceReport'] = UserDetails::
-            select(DB::raw('timediff(logout_time,login_time) as timediff'),
+
+            $allDates = $this->getDatesFromRange($data['startDate'], $data['endDate']);
+            $weekends = $this->getWeekendDates($data['startDate'], $data['endDate']);
+
+            $holidays = HolidayInfo::whereBetween('holiday', [$data['startDate'], $data['endDate']])
+                ->orderBy('holiday', 'asc')
+                ->select('holiday')
+                ->lists('holiday')
+                ->toArray();
+
+            $leaves = Leave::whereBetween('leave_date', [$data['startDate'], $data['endDate']])
+                ->where('user_id', $data['id'])
+                ->where('leave_status', 1)
+                ->select('leave_date')
+                ->lists('leave_date')
+                ->toArray();
+            //return $leaves;
+
+            $attendance = UserDetails::select(DB::raw('timediff(logout_time,login_time) as timediff'),
                 'login_date', 'logout_date', 'id', 'login_time', 'logout_time', 'user_id', 'status')
                 ->where('user_id', $data['id'])
-                ->where('login_date', '>=', $data['startDate'])
-                ->where('logout_date', '<=', $data['endDate'])
+                ->whereBetween('login_date', [$data['startDate'], $data['endDate']])
                 ->orderBy('id', 'ASC')
                 ->get()
                 ->toArray();
+            //return $attendance;
+
+            // Prepare report array
+            $attendanceReport = [];
+
+            // Add Present records
+            foreach ($attendance as $record) {
+                $attendanceReport[] = [
+                    'id' => $record['id'],
+                    'login_date' => $record['login_date'],
+                    'logout_date' => $record['logout_date'],
+                    'login_time' => $record['login_time'],
+                    'logout_time' => $record['logout_time'],
+                    'status' => 'Present',
+                ];
+            }
+
+            //return $attendanceReport;
+            // Add Leave records
+            foreach ($leaves as $leaveDate) {
+                $attendanceReport[] = [
+                    'id' => uniqid(), // temp ID
+                    'login_date' => $leaveDate,
+                    'logout_date' => $leaveDate,
+                    'login_time' => $leaveDate . ' 00:00:00',
+                    'logout_time' => $leaveDate . ' 23:59:59',
+                    'status' => 'On Leave',
+                ];
+            }
+
+            // Add Absent records
+            foreach ($allDates as $date) {
+                if (in_array($date, $weekends)) {
+                    continue; // Skip weekends and holidays
+                }
+                if(in_array($date, $holidays)){
+                    $attendanceReport[] = [
+                        'id' => uniqid(), // temp ID
+                        'login_date' => $date,
+                        'logout_date' => $date,
+                        'login_time' => $date . ' 00:00:00',
+                        'logout_time' => $date . ' 23:59:59',
+                        'status' => 'Holiday',
+                    ];
+                }
+
+                $isPresent = collect($attendanceReport)->where('login_date', $date)->count();
+                if ($isPresent == 0) {
+                    $attendanceReport[] = [
+                        'id' => uniqid(), // temp ID
+                        'login_date' => $date,
+                        'logout_date' => $date,
+                        'login_time' => $date . ' 00:00:00',
+                        'logout_time' => $date . ' 23:59:59',
+                        'status' => 'Absent',
+                    ];
+                }
+
+            }
+
+            //return $attendanceReport;
+            // Sort by date
+            usort($attendanceReport, function ($a, $b) {
+                return strtotime($a['login_date']) - strtotime($b['login_date']);
+            });
+
+            $data['attendanceReport'] = $attendanceReport;
+
+            //return $data['attendanceReport'];
 
             if (!$data['attendanceReport']) {
                 Session::flash('flashError', 'You are not Any Work From '.$data['startDate'].' to '. $data['endDate']);
@@ -384,6 +511,7 @@ class UserController extends Controller {
                 return redirect('user/table-report');
             }
             $data['allDate']= $this->getDatesFromRange( $data['startDate'], $data['endDate']);
+            $data['weekends'] = $this->getWeekendDates($data['startDate'], $data['endDate']);
             $data['allHoliday'] = HolidayInfo::where('holiday', '>=',  $data['startDate'])
                 ->where('holiday', '<=', $data['endDate'])
                 ->get()
@@ -394,13 +522,21 @@ class UserController extends Controller {
                 ->where('leave_status', 1)
                 ->get()
                 ->toArray();
-            $data['attendanceReport'] = UserDetails::
-            select(DB::raw('timediff(logout_time,login_time) as timediff'),
-                'login_date', 'logout_date', 'id', 'login_time', 'logout_time', 'user_id', 'status')
+            $data['attendanceReport'] = UserDetails::select(
+                'login_date',
+                DB::raw('MIN(login_time) as first_login'),
+                DB::raw('MAX(logout_time) as last_logout'),
+                DB::raw('SEC_TO_TIME(SUM(TIME_TO_SEC(TIMEDIFF(logout_time, login_time)))) as total_work_time'),
+                DB::raw('(SELECT SEC_TO_TIME(SUM(TIME_TO_SEC(TIMEDIFF(break_end, break_start))))
+                  FROM user_breaks 
+                  WHERE user_breaks.user_id = user_details.user_id 
+                  AND DATE(user_breaks.break_start) = user_details.login_date) as total_break_time')
+            )
                 ->where('user_id', $data['id'])
-                ->where('login_date', '>=', $data['startDate'])
-                ->where('logout_date', '<=', $data['endDate'])
-                ->orderBy('id', 'ASC')
+                ->whereBetween('login_date', [$data['startDate'], $data['endDate']])
+                ->where('logout_time', '!=', '0000-00-00 00:00:00')
+                ->groupBy('login_date')
+                ->orderBy('login_date', 'ASC')
                 ->get()
                 ->toArray();
 
@@ -573,59 +709,206 @@ class UserController extends Controller {
     }
 
     public function activityWiseUserList(){
+        $onLeaveUsers = Leave::with([
+            'User'=>function($query){
+                $query->select('id', 'username', 'user_first_name', 'user_last_name');
+            }
+        ])->where('leave_date', date('Y-m-d'))
+            ->where('leave_status', 1)
+            ->select('user_id')
+            ->get();
         $allUsers = \App\User::where('user_label', 2)
             ->where('status', 1)
+            ->whereNotIn('id', $onLeaveUsers->pluck('user_id')->toArray())
             ->orderBy('username', 'asc')
             ->get();
-
+        //return $allUsers;
         $punchedInUsers = [];
         $notPunchedInUsers = [];
         $onBreakUsers = [];
+        $loggedOutUsers = [];
 
         foreach ($allUsers as $user) {
             $punchData = UserDetails::where('user_id', $user->id)
-                ->whereNull('logout_time')
+                ->where('login_date', date('Y-m-d'))
+                ->where('logout_date', '0000-00-00')
                 ->latest()
                 ->first();
-            $userInfo = $user->username . ' (' . $user->user_first_name . ' ' . $user->user_last_name . ')';
+            $userInfo = $user->username;
             if ($punchData) {
                 // Check if the user is on break
                 $activeBreak = UserBreak::where('user_id', $user->id)
                     ->whereNull('break_end')
                     ->latest()
                     ->first();
+
                 if ($activeBreak) {
                     // User is on break, so add to "On Break" list and exclude from "On Desk"
                     $breakDuration = Carbon::parse($activeBreak->break_start)
                         ->diff(Carbon::now())
-                        ->format('%H:%I:%S');
+                        ->format('%H:%I');
+
+                    // Fetch total break time for today
+                    $totalBreakTime = DB::table('user_breaks')
+                        ->where('user_id', $user->id)
+                        ->where('break_start', '>=', date('Y-m-d') . ' 00:00:00')
+                        ->where('break_start', '<=', date('Y-m-d') . ' 23:59:59')
+                        ->whereNotNull('break_end')
+                        ->select(DB::raw('SEC_TO_TIME(SUM(TIME_TO_SEC(TIMEDIFF(break_end, break_start)))) AS total_break_time'))
+                        ->first();
+
+                    $totalBreakDuration = $totalBreakTime->total_break_time ?? '00:00';
 
                     $onBreakUsers[] = [
+                        'id' => $user->id,
                         'name' => $userInfo,
-                        'break_duration' => $breakDuration
+                        'break_duration' => $breakDuration,
+                        'total_break_duration' => Carbon::parse($totalBreakDuration)->format('H:i')
                     ];
                 } else {
                     // User is working (not on break), add to "On Desk" list
                     $workingHours = Carbon::parse($punchData->login_time)
                         ->diff(Carbon::now())
-                        ->format('%H:%I:%S');
-
+                        ->format('%H:%I');
                     $punchedInUsers[] = [
+                        'id' => $user->id,
                         'name' => $userInfo,
-                        'working_hours' => $workingHours
+                        'working_hours' => $workingHours,
+                        'logged_in_at' => Carbon::parse($punchData->login_time)->format("H:i A")
                     ];
                 }
             } else {
-                // User has not punched in yet, add to "Not Punched In" list
-                $notPunchedInUsers[] = $userInfo;
+
+                $loggedOutRecord = UserDetails::where('user_id', $user->id)
+                    ->where('login_date', date('Y-m-d'))
+                    ->where('logout_date', date('Y-m-d'))
+                    ->latest()
+                    ->first();
+                if ($loggedOutRecord) {
+                    $loggedOutUsers[] = [
+                        'id' => $user->id,
+                        'name' => $userInfo,
+                        'logged_out_at' => Carbon::parse($loggedOutRecord->logout_time)->format("H:i A"),
+                        'duration' => Carbon::parse($loggedOutRecord->login_time)
+                            ->diff(Carbon::parse($loggedOutRecord->logout_time))
+                            ->format('%H:%I')
+                    ];
+                } else {
+                    // Not punched in at all
+                    $notPunchedInUsers[] = [
+                        'id' => $user->id,
+                        'name' => $userInfo
+                    ];
+                }
             }
         }
-
+        usort($punchedInUsers, function ($a, $b) {
+            return strtotime($a['logged_in_at']) - strtotime($b['logged_in_at']);
+        });
+        usort($loggedOutUsers, function ($a, $b) {
+            return strtotime($a['logged_out_at']) - strtotime($b['logged_out_at']);
+        });
         return [
             'punchedInUser' => $punchedInUsers,  // Now excludes users who are on break
             'notPunchedInUser' => $notPunchedInUsers,
-            'onBreakUser' => $onBreakUsers
+            'onBreakUser' => $onBreakUsers,
+            'onLeaveUser' => $onLeaveUsers,
+            'punchedOutUser' => $loggedOutUsers,
         ];
+    }
+
+    public function anyAttendanceLog()
+    {
+        if(Input::all()) {
+            $data['startDate'] = Input::get('from');
+            $data['endDate'] = Input::get('to');
+            $data['id'] = Auth::user()->id;
+            $data['userInfo'] = \App\User::find($data['id']);
+            if (!$data['userInfo']) {
+                Session::flash('flashError', 'This User Is Not Found');
+                return redirect('user/table-report');
+            }
+            $data['allDate']= $this->getDatesFromRange( $data['startDate'], $data['endDate']);
+            $data['allHoliday'] = HolidayInfo::where('holiday', '>=',  $data['startDate'])
+                ->where('holiday', '<=', $data['endDate'])
+                ->get()
+                ->toArray();
+            $data['allLeave'] = Leave::where('leave_date', '>=',  $data['startDate'])
+                ->where('leave_date', '<=', $data['endDate'])
+                ->where('user_id', $data['id'])
+                ->where('leave_status', 1)
+                ->get()
+                ->toArray();
+            $data['attendanceReport'] = UserDetails::
+            select(DB::raw('timediff(logout_time,login_time) as timediff'),
+                'login_date', 'logout_date', 'id', 'login_time', 'logout_time', 'user_id', 'status')
+                ->where('user_id', $data['id'])
+                ->where('login_date', '>=', $data['startDate'])
+                ->where('logout_date', '<=', $data['endDate'])
+                ->orderBy('id', 'ASC')
+                ->get()
+                ->toArray();
+
+            if (!$data['attendanceReport']) {
+                Session::flash('flashError', 'You are not Any Work From '.$data['startDate'].' to '. $data['endDate']);
+                return redirect('user/table-report');
+            }
+
+            return view('Users.report', $data);
+        }else {
+            $user = new \App\User();
+            $data['allUser'] = $user->allUser();
+            return view('Users.tableReportRequest', $data);
+        }
+    }
+
+    public function anyBreakTimeLog(){
+        $data['startDate'] = Input::get('s_date');
+        $data['endDate'] = Input::get('e_date');
+        $data['id'] = Auth::user()->id;
+        $data['userInfo'] = \App\User::find($data['id']);
+
+        $data['attendanceReport'] = UserDetails::select(
+            DB::raw('TIMEDIFF(logout_time, login_time) AS timediff'),
+            'login_date', 'logout_date', 'id', 'login_time', 'logout_time', 'user_id'
+        )
+            ->where('user_id', $data['id'])
+            ->where('login_date', '>=',  $data['startDate'])
+            ->where('logout_date', '<=', $data['endDate'])
+            ->orderBy('id', 'ASC')
+            ->get()
+            ->toArray();
+
+        $data['breakLogs'] = DB::table('user_breaks')
+            ->select(
+                'user_id',
+                'break_start',
+                'break_end',
+                DB::raw('TIMEDIFF(break_end, break_start) AS break_duration')
+            )
+            ->where('user_id', $data['id'])
+            ->where('break_start', '>=', $data['startDate'].' 00:00:00')
+            ->where('break_start', '<=', $data['endDate'].' 23:59:59')
+            ->orderBy('break_start', 'ASC')
+            ->get();
+
+
+        //return $data['breakLogs'];
+
+        $data['allDate'] = $this->getDatesFromRange($data['startDate'], $data['endDate']);
+
+        return view('Users.breakTimeLog', $data);
+    }
+    function getWeekendDates($startDate, $endDate)
+    {
+        $dateRange = $this->getDatesFromRange($startDate, $endDate); // Assuming this returns an array of dates
+
+        $weekends = array_values(array_filter($dateRange, function ($date) {
+            $dayOfWeek = Carbon::parse($date)->dayOfWeek;
+            return in_array($dayOfWeek, [Carbon::SATURDAY, Carbon::SUNDAY]); // Get only Saturdays & Sundays
+        }));
+
+        return $weekends;
     }
 
 }
