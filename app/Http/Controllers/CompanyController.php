@@ -1656,11 +1656,14 @@ class CompanyController extends Controller
             return $b['activeSeconds'] <=> $a['activeSeconds'];
         });
         $presentUserIds =  collect($reports)->lists('user_id')->toArray();
-        $userIdsToBeSkipped = array_merge($inactiveUserIds->toArray(), $presentUserIds);
+        //return $presentUserIds;
         $absentUserLists  = User::select('id', 'username')
-            ->whereNotIn('id', $userIdsToBeSkipped)
+            ->where('user_label', 2)
+            ->where('status', 1)
+            ->whereNotIn('id', $presentUserIds)
             ->orderBy('username', 'asc')
             ->get();
+        //return $absentUserLists;
         foreach ($absentUserLists as $absentUser) {
             $reports[] = [
                 'id' => null,
