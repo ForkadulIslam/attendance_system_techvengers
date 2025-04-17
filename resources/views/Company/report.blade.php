@@ -74,12 +74,12 @@
                                 }
                             ?>
                         </td>
-                        <td>
+                        <td data-order="{!! $attendance ? $attendance['work_time_second'] : 0 !!}">
                             <a href="{!! URL::to('company/attendance-log') !!}?s_date=<?php echo $date ?>&e_date=<?php echo $date ?>&id=<?php echo $userInfo->id ?>">
                                 <?= $attendance ? $attendance['total_work_time'] : '00:00:00' ?>
                             </a>
                         </td>
-                        <td>
+                        <td data-order="{!! $attendance ? $attendance['break_time_second'] : 0 !!}">
                             <a href="{!! URL::to('company/break-time-log') !!}?s_date=<?php echo $date ?>&e_date=<?php echo $date ?>&id=<?php echo $userInfo->id ?>">
                                 <?= $attendance ? $attendance['total_break_time'] : '00:00:00' ?>
                             </a>
@@ -87,6 +87,7 @@
                         <td>
                             <?php
                             if ($attendance) {
+
                                 $workTimeInSeconds = strtotime($attendance['total_work_time']) - strtotime("00:00:00");
                                 $breakTimeInSeconds = strtotime($attendance['total_break_time']) - strtotime("00:00:00");
                                 if($attendance['total_break_time'] != null){
