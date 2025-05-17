@@ -16,10 +16,10 @@ class BreakTimeController extends Controller
 {
     public function __construct()
     {
+        date_default_timezone_set(Auth::user()->CompanyUser->time_zone);
         $this->beforeFilter(function(){
             $this->counter();
         });
-        date_default_timezone_set(Auth::user()->CompanyUser->time_zone);
     }
     public function counter()
     {

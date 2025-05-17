@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\Input;
 use Illuminate\Support\Facades\Redirect;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Hash;
+use GuzzleHttp\Client;
 
 class CompanyController extends Controller
 {
@@ -73,7 +74,53 @@ class CompanyController extends Controller
         $data['allNotice'] = NoticeBoard::orderBy('id', 'DESC')->paginate(10);
         $data['activityWiseUserList'] =  $this->activityWiseUserList();
         //return $data['activityWiseUserList'];
+
+        $allUsers = \App\User::where('user_label', 2)
+            ->where('status', 1)
+            ->get()
+            ->map(function($user) {
+                return [
+                    'id' => $user->id,
+                    'name' => $user->username,
+                    'link' => url("company/report?s_date=".date('Y-m-d')."&e_date=".date('Y-m-d')."&id=".$user->id)
+                ];
+            });
+        $data['allUsers'] = $allUsers;
+        //return $this->getOnlineUsers();
         return view('Company.home', $data);
+    }
+
+
+    public function getOnlineUsers()
+    {
+        $ablyKey = 'BEm5bw.24xxVQ:3nIhmsZUfMy_KRKWtOd5KcitYvWF-5VAUeTCieD_41k'; // e.g., BEm5bw.xxxxx
+        $channel = 'tracker-presence';
+
+        $client = new Client();
+
+        try {
+            $response = $client->request('GET', "https://rest.ably.io/channels/{$channel}/presence", [
+                'auth' => [$ablyKey, ''], // HTTP Basic Auth
+                'query' => [
+                    'limit' => 100
+                ]
+            ]);
+
+            $body = json_decode($response->getBody(), true);
+            $presenceData = $body['items'] ?? [];
+
+            $users = collect($presenceData)->map(function ($item) {
+                return [
+                    'clientId' => $item['clientId'],
+                    'userId' => preg_match('/(\d+)$/', $item['clientId'], $m) ? $m[1] : null,
+                    'data' => $item['data'] ?? null,
+                ];
+            });
+
+            return $users;
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Failed to fetch presence', 'message' => $e->getMessage()], 500);
+        }
     }
 
     /**
@@ -128,7 +175,7 @@ class CompanyController extends Controller
     {
         $search = Input::get('search');
         $user = new \App\User();
-        $data['allUser'] = $user->whereRaw("username regexp '[[:<:]]$search'")
+        $data['allUser'] = $user->where("username", 'like', '%'. $search. '%')
             ->where('company_id', Auth::user()->company_id)
             ->where('user_label', '>', 1)->paginate(10);
         return view('Company.userTable', $data);
@@ -294,6 +341,24 @@ class CompanyController extends Controller
         return 'true';
     }
 
+
+    public function  postUpdateYearlyLeaveBalance($id)
+    {
+        $rules = array(
+            'yearly_leave_balance' => "required",
+        );
+        /* Laravel Validator Rules Apply */
+        $validator = Validator::make(Input::all(), $rules);
+        if ($validator->fails()):
+            return $validator->messages()->first();
+        else:
+            $userUpdate = \App\User::find($id);
+            $userUpdate->yearly_leave_balance = Input::get('yearly_leave_balance');
+            $userUpdate->save();
+        endif;
+        return 'true';
+    }
+
     /**
      * @return \Illuminate\View\View|string
      */
@@ -418,7 +483,7 @@ class CompanyController extends Controller
             $q->where('company_id', Auth::user()->company_id);
         })
             ->update(array('admin_noti_status' => 0));
-        $data['allLeave'] = Leave::whereHas('User', function ($q) {
+        $data['allLeave'] = Leave::with(['LeaveCategories'])->whereHas('User', function ($q) {
             $q->where('company_id', Auth::user()->company_id);
         })
             ->whereHas('LeaveCategories', function ($q) {
@@ -426,6 +491,7 @@ class CompanyController extends Controller
             })
             ->orderBy('id', 'desc')
             ->paginate(15);
+        //return $data['allLeave'];
         $data['leaveTable'] = view('Company.leaveTable', $data);
         return view('Company.allLeave', $data);
     }
@@ -438,7 +504,7 @@ class CompanyController extends Controller
         $data['allLeave'] = Leave::whereHas('User', function ($q) {
             $search = Input::get('search');
             $q->where('company_id', Auth::user()->company_id);
-            $q->whereRaw("username regexp '[[:<:]]$search'");
+            $q->where('username', 'like', '%' . $search . '%');
         })
             ->whereHas('LeaveCategories', function ($q) {
                 $q->where('deleted_at');
@@ -454,6 +520,7 @@ class CompanyController extends Controller
      */
     public function getChangeLeaveStatus($id)
     {
+
         if (Input::get('status') == 'grant') {
             $categoryID = Input::get('categoryID');
             $first_day_this_year = date('Y-01-01');
@@ -464,8 +531,10 @@ class CompanyController extends Controller
                 ->where('user_id', Input::get('userID'))
                 ->where('leave_status', 1)
                 ->count();
-            if ($leaveNumber == Input::get('categoryBudget') || $leaveNumber > Input::get('categoryBudget'))
-                return 'false';
+            if($categoryID != 25){
+                if ($leaveNumber == Input::get('categoryBudget') || $leaveNumber > Input::get('categoryBudget'))
+                    return 'false';
+            }
             $statusChange = Leave::find($id);
             $statusChange->leave_status = 1;
             $statusChange->user_noti_status = 1;
@@ -480,6 +549,9 @@ class CompanyController extends Controller
             Session::flash('success', 'Leave Status Changed');
             return 'true';
         } elseif (Input::get('status') == 'delete') {
+            $statusChange = Leave::find($id);
+            $statusChange->leave_status = 2;
+            $statusChange->save();
             $leaveDelete = Leave::find($id);
             $leaveDelete->delete();
             return 'true';
@@ -584,6 +656,21 @@ class CompanyController extends Controller
             ->orderBy('id', 'ASC')
             ->get()
             ->toArray();
+
+        // ✅ Calculate total work time duration
+        $totalSeconds = 0;
+        foreach ($data['attendanceReport'] as $log) {
+            if ($log['timediff']) {
+                list($h, $m, $s) = explode(':', $log['timediff']);
+                $totalSeconds += ($h * 3600) + ($m * 60) + $s;
+            }
+        }
+        // Format to HH:MM:SS
+        $hours = floor($totalSeconds / 3600);
+        $minutes = floor(($totalSeconds % 3600) / 60);
+        $seconds = $totalSeconds % 60;
+        $data['totalWorkingHour'] = sprintf('%02d:%02d:%02d', $hours, $minutes, $seconds);
+
         $data['allDate'] = $this->getDatesFromRange($data['startDate'], $data['endDate']);
         $data['allHoliday'] = HolidayInfo::where('holiday', '>=', $data['startDate'])
             ->where('holiday', '<=', $data['endDate'])
@@ -647,7 +734,7 @@ class CompanyController extends Controller
                 })
                 ->whereNotIn('user_id', $inactiveUserIds)
                 ->whereIn('login_date', $data['allDates'])  // Only working days
-                ->where('logout_time', '!=', '0000-00-00 00:00:00')
+                //->where('logout_time', '!=', '0000-00-00 00:00:00')
                 ->orderBy('id', 'ASC')
                 ->get();
             //return collect($data['attendanceReport']);
@@ -668,13 +755,51 @@ class CompanyController extends Controller
             $workingDays = $data['allDates'];
             $data['approvedLeaves'] = User::with(['approvedLeave'=>function($query) use($workingDays){
                 $query->whereIn('leave_date', $workingDays)
+                    ->where('leave_category_id', '!=', 25)
                     ->orderBy('leave_date', 'asc')
-                    ->select('user_id', 'leave_date');
+                    ->select('user_id', 'leave_date', 'is_half_day', 'leave_category_id');
             }])->select('id')
                 ->where('company_id', Auth::user()->company_id)
                 ->where('user_label', 2)
                 ->where('status', 1)
                 ->get();
+            $data['approvedAuthorizedLeaves'] = User::with(['approvedLeave'=>function($query) use($workingDays){
+                $query->whereIn('leave_date', $workingDays)
+                    ->where('leave_category_id', 25)
+                    ->orderBy('leave_date', 'asc')
+                    ->select('user_id', 'leave_date', 'is_half_day', 'leave_category_id');
+            }])->select('id')
+                ->where('company_id', Auth::user()->company_id)
+                ->where('user_label', 2)
+                ->where('status', 1)
+                ->get();
+
+            //return $data['approvedLeaves'];
+
+            $weekEnd =  array_filter(
+                $this->getDatesFromRange($data['startDate'], $data['endDate']),
+                function ($date) {
+                    $dayOfWeek = Carbon::parse($date)->dayOfWeek;
+                    return in_array($dayOfWeek, [Carbon::SATURDAY, Carbon::SUNDAY]); // Exclude weekends
+                }
+            );
+            $data['weekEndAttendanceReport'] = UserDetails::
+            select(DB::raw('timediff(logout_time,login_time) as timediff'),
+                'login_date', 'logout_date', 'id', 'login_time', 'logout_time', 'user_id')
+                ->whereHas('User', function ($q) {
+                    $q->where('company_id', Auth::user()->company_id);
+                })
+                ->whereNotIn('user_id', $inactiveUserIds)
+                ->whereIn('login_date', collect($weekEnd)->values())  // Only weekEnd
+                ->where('logout_time', '!=', '0000-00-00 00:00:00')
+                ->orderBy('id', 'ASC')
+                ->get();
+
+            $data['holidays'] = HolidayInfo::whereBetween('holiday', [$data['startDate'], $data['endDate']])
+                ->select('holiday')
+                ->lists('holiday')
+                ->toArray();
+
             //return $data['approvedLeaves'];
             //return $data['breakReport'];
             //return collect($data['attendanceReport'])->where('user_id', 102);
@@ -733,9 +858,8 @@ class CompanyController extends Controller
             $leaves = Leave::whereBetween('leave_date', [$data['startDate'], $data['endDate']])
                 ->where('user_id', $data['id'])
                 ->where('leave_status', 1)
-                ->select('leave_date')
-                ->lists('leave_date')
-                ->toArray();
+                ->select('leave_date','leave_category_id','is_half_day')
+                ->get();
             //return $leaves;
 
             $attendance = UserDetails::select(DB::raw('timediff(logout_time,login_time) as timediff'),
@@ -764,14 +888,23 @@ class CompanyController extends Controller
 
             //return $attendanceReport;
             // Add Leave records
-            foreach ($leaves as $leaveDate) {
+            foreach ($leaves as $leave) {
+                $leaveDate = $leave->leave_date;
+                $_status = 'On Leave';
+                if($leave->leave_category_id == 25){
+                    if($leave->is_half_day){
+                        $_status = 'Authorized [Half day]';
+                    }else{
+                        $_status = 'Authorized [Full day]';
+                    }
+                }
                 $attendanceReport[] = [
                     'id' => uniqid(), // temp ID
                     'login_date' => $leaveDate,
                     'logout_date' => $leaveDate,
                     'login_time' => $leaveDate . ' 00:00:00',
                     'logout_time' => $leaveDate . ' 23:59:59',
-                    'status' => 'On Leave',
+                    'status' => $_status,
                 ];
             }
 
@@ -867,7 +1000,7 @@ class CompanyController extends Controller
             )
                 ->where('user_id', $data['id'])
                 ->whereBetween('login_date', [$data['startDate'], $data['endDate']])
-                ->where('logout_time', '!=', '0000-00-00 00:00:00')
+                //->where('logout_time', '!=', '0000-00-00 00:00:00')
                 ->groupBy('login_date')
                 ->orderBy('login_date', 'ASC')
                 ->get()
@@ -881,8 +1014,18 @@ class CompanyController extends Controller
                 })
                 ->values()
                 ->toArray();
-
             //return $data['attendanceReport'];
+            $totalWorkSeconds = collect($data['attendanceReport'])->sum('work_time_second');
+            $totalBreakSeconds = collect($data['attendanceReport'])->sum('break_time_second');
+            $totalActiveSeconds = $totalWorkSeconds - $totalBreakSeconds;
+            //return $totalWorkSeconds;
+            $data['summary'] = [
+                'total_work_time' => $this->formatDuration($totalWorkSeconds),
+                'total_break_time' => $this->formatDuration($totalBreakSeconds),
+                'total_active_time' => $this->formatDuration($totalActiveSeconds),
+            ];
+            //return $data['summary'];
+
             if (!$data['attendanceReport']) {
                 Session::flash('flashError', $data['userInfo']->username . ' Has not Any Work From ' . $data['startDate'] . ' to ' . $data['endDate']);
                 return redirect('company/table-report');
@@ -900,6 +1043,15 @@ class CompanyController extends Controller
         if (!$time) return 0;
         list($h, $m, $s) = explode(':', $time);
         return ($h * 3600) + ($m * 60) + $s;
+    }
+
+    function formatDuration($seconds)
+    {
+        $hours = floor($seconds / 3600);
+        $minutes = floor(($seconds % 3600) / 60);
+        $remainingSeconds = $seconds % 60;
+
+        return sprintf('%02d:%02d:%02d', $hours, $minutes, $remainingSeconds);
     }
 
     /**
@@ -1306,6 +1458,17 @@ class CompanyController extends Controller
                 ->where('logout_date', '0000-00-00')
                 ->latest()
                 ->first();
+
+            // Fetch total break time for today
+            $totalBreakTime = DB::table('user_breaks')
+                ->where('user_id', $user->id)
+                ->where('break_start', '>=', date('Y-m-d') . ' 00:00:00')
+                ->where('break_start', '<=', date('Y-m-d') . ' 23:59:59')
+                ->whereNotNull('break_end')
+                ->select(DB::raw('SEC_TO_TIME(SUM(TIME_TO_SEC(TIMEDIFF(break_end, break_start)))) AS total_break_time'))
+                ->first();
+            $totalBreakDuration = $totalBreakTime->total_break_time ?? '00:00';
+
             $userInfo = $user->username;
             if ($punchData) {
                 // Check if the user is on break
@@ -1313,29 +1476,17 @@ class CompanyController extends Controller
                     ->whereNull('break_end')
                     ->latest()
                     ->first();
-
                 if ($activeBreak) {
                     // User is on break, so add to "On Break" list and exclude from "On Desk"
                     $breakDuration = Carbon::parse($activeBreak->break_start)
                         ->diff(Carbon::now())
                         ->format('%H:%I');
-
-                    // Fetch total break time for today
-                    $totalBreakTime = DB::table('user_breaks')
-                        ->where('user_id', $user->id)
-                        ->where('break_start', '>=', date('Y-m-d') . ' 00:00:00')
-                        ->where('break_start', '<=', date('Y-m-d') . ' 23:59:59')
-                        ->whereNotNull('break_end')
-                        ->select(DB::raw('SEC_TO_TIME(SUM(TIME_TO_SEC(TIMEDIFF(break_end, break_start)))) AS total_break_time'))
-                        ->first();
-
-                    $totalBreakDuration = $totalBreakTime->total_break_time ?? '00:00';
-
                     $onBreakUsers[] = [
                         'id' => $user->id,
                         'name' => $userInfo,
                         'break_duration' => $breakDuration,
-                        'total_break_duration' => Carbon::parse($totalBreakDuration)->format('H:i')
+                        'total_break_duration' => Carbon::parse($totalBreakDuration)->format('H:i'),
+                        'logged_in_at' => Carbon::parse($punchData->login_time)->format("H:i A")
                     ];
                 } else {
                     // User is working (not on break), add to "On Desk" list
@@ -1346,6 +1497,7 @@ class CompanyController extends Controller
                         'id' => $user->id,
                         'name' => $userInfo,
                         'working_hours' => $workingHours,
+                        'total_break_duration' => Carbon::parse($totalBreakDuration)->format('H:i'),
                         'logged_in_at' => Carbon::parse($punchData->login_time)->format("H:i A")
                     ];
                 }
@@ -1361,6 +1513,8 @@ class CompanyController extends Controller
                         'id' => $user->id,
                         'name' => $userInfo,
                         'logged_out_at' => Carbon::parse($loggedOutRecord->logout_time)->format("H:i A"),
+                        'total_break_duration' => Carbon::parse($totalBreakDuration)->format('H:i'),
+                        'logged_in_at' => Carbon::parse($loggedOutRecord->login_time)->format("H:i A"),
                         'duration' => Carbon::parse($loggedOutRecord->login_time)
                             ->diff(Carbon::parse($loggedOutRecord->logout_time))
                             ->format('%H:%I')

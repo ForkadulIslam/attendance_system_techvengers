@@ -65,10 +65,34 @@ foreach ($reports as &$report) {
     $report['activeSeconds'] = $activeSeconds;
     $report['activeTime'] = sprintf("%d:%02d", $activeHours, $activeMinutes);
 
-    $report['presentDays'] = collect($attendanceReport)->where('user_id', $report['user_id'])->groupBy('login_date')->count();
+    $attendanceWorkingDateCollection = collect($attendanceReport)->where('user_id', $report['user_id'])->groupBy('login_date');
+    $report['presentDays'] = $attendanceWorkingDateCollection->count();
+    $report['presentDays'] += collect($weekEndAttendanceReport)->where('user_id', $report['user_id'])->groupBy('login_date')->count();
     $userLeave = $approvedLeaves->where('id',$report['user_id'])->first();
-    $report['approvedLeave'] = ($userLeave) ? count($userLeave->approvedLeave) : 0;
-    $report['absentDays'] = max(0, count($allDates) - ($report['presentDays'] + $report['approvedLeave']));
+    $userAuthorizedLeave = $approvedAuthorizedLeaves->where('id',$report['user_id'])->first();
+    if($userLeave){
+        $report['approvedLeave'] = $userLeave->approvedLeave->count();
+    }else{
+        $report['approvedLeave'] = 0;
+    }
+    if($userAuthorizedLeave){
+        $authorizedHalfDayLeave = $userAuthorizedLeave->approvedLeave->where('is_half_day', .5)->sum('is_half_day');
+        $authorizedLeaveCount = $userAuthorizedLeave->approvedLeave->where('is_half_day', null)->count();
+        $report['authorizedLeave'] = $authorizedLeaveCount + $authorizedHalfDayLeave;
+    }else{
+        $report['authorizedLeave'] = 0;
+    }
+
+    $report['presentDays'] -= $authorizedHalfDayLeave;
+    $attendanceDateList = array_keys($attendanceWorkingDateCollection->toArray());
+    $absentCount = 0;
+    foreach ($allDates as $date){
+        if(!in_array($date, $attendanceDateList) && !in_array($date, $holidays) && !in_array($date, $userLeave->approvedLeave->lists('leave_date')->toArray())){
+            $absentCount++;
+        }
+    }
+    Log::info($userAuthorizedLeave->approvedLeave->where('is_half_day', null));
+    $report['absentDays'] = $absentCount - $authorizedLeaveCount;
 
     // --- New: Average Break Time ---
     if ($report['presentDays'] > 0) {
@@ -120,6 +144,7 @@ unset($report);
                         <td>Present Days</td>
                         <td>Absent Days</td>
                         <td>Approved Leave</td>
+                        <td>Authorized Leave</td>
                     </tr>
                     </thead>
                     <tbody>
@@ -159,6 +184,9 @@ unset($report);
                         </td>
                         <td>
                             {{ $report['approvedLeave'] }}
+                        </td>
+                        <td>
+                            {!! $report['authorizedLeave'] !!}
                         </td>
 
                     </tr>

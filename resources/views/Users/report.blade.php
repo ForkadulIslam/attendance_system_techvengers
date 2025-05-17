@@ -100,6 +100,19 @@
                 <?php endforeach; ?>
 
                 </tbody>
+                <tfooter>
+                    <tr>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td>
+                            <b>{!! $summary['total_work_time'] !!}</b>
+                        </td>
+                        <td><b>{!! $summary['total_break_time'] !!}</b></td>
+                        <td><b>{!! $summary['total_active_time'] !!}</b></td>
+                        <td></td>
+                    </tr>
+                </tfooter>
             </table>
         </div>
     </div><!--/span-->

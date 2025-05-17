@@ -34,18 +34,27 @@
                 editable: false,
                 eventLimit: true, // allow "more" link when too many events
                 events: [
-    <?php
-    foreach($attendanceReport as $attendanceReport){ ?>
+                        <?php
+                        foreach($attendanceReport as $attendanceReport){
+                        $color = "#dc3545";
+                        if($attendanceReport['status'] == 'Present'){
+                            $color = "#28a745";
+                        }else if($attendanceReport['status'] === 'On Leave'){
+                            $color = "#007bff";
+                        }else if($attendanceReport['status'] === 'Authorized [Half day]' || $attendanceReport['status'] === 'Authorized [Full day]'){
+                            $color = "#0017ff";
+                        }
+                        ?>
                     {
                         id: "<?php echo $attendanceReport['id']?>",
                         title: "<?php echo $attendanceReport['status']?>",
                         start: "<?php echo $attendanceReport['login_time']?>",
                         end: "<?php echo $attendanceReport['logout_time']?>",
-                        color: "<?php echo $attendanceReport['status'] === 'Present' ? '#28a745' : ($attendanceReport['status'] === 'On Leave' ? '#007bff' : '#dc3545' ) ?>"
+                        color: "<?php echo  $color; ?>"
                     },
-                <?php
-                     }
-    ?>
+                    <?php
+                    }
+                    ?>
                 ]
             });
 

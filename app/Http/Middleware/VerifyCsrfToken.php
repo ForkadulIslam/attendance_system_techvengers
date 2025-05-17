@@ -12,6 +12,11 @@ class VerifyCsrfToken extends BaseVerifier
      * @var array
      */
     protected $except = [
-        //
+        'api/break-start',
+        'api/break-end',
+        'api/login',
+        'api/punch-out',
+        'api/punch-in',
+        'api/screenshot-upload',
     ];
 }
