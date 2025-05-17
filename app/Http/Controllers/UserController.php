@@ -217,7 +217,8 @@ class UserController extends Controller {
             ->where('leave_categories.company_id', Auth::user()->company_id)
             ->groupBy('leaves.leave_category_id','leave_categories.category','leave_categories.category_num','leave_categories.id')
             ->get();
-        $allCategory = LeaveCategories::all();
+        //return $leaveByCategory;
+        $allCategory = LeaveCategories::whereNotIn('id', [25])->get();
         $leaveBudget = array();
         foreach($allCategory as $key=>$category):
             $searchId = $category->id;
@@ -237,7 +238,12 @@ class UserController extends Controller {
             }
             $leaveBudget[$category->id]["categoryTotal"] = $category->category_num;
         endforeach;
-            Session::put('checkBudget', $leaveBudget);
+        if(\App\User::find(Auth::user()->id)->yearly_leave_balance){
+            $leaveBudget[24]['categoryTotal'] =  \App\User::find(Auth::user()->id)->yearly_leave_balance;
+            $leaveBudget[24]['categoryBudget'] = ($leaveBudget[24]['categoryTotal'] - $leaveBudget[24]['categoryUsed']);
+        }
+        //return $leaveBudget;
+        Session::put('checkBudget', $leaveBudget);
         $data['leaveBudget'] = $leaveBudget;
         return view('Users.applyLeave',$data);
     }
@@ -253,6 +259,8 @@ class UserController extends Controller {
         $leaveDate = Input::get('leave_date');
         $firstDayThisYear = date('Y-01-01');
         $lastDayThisYear  = date('Y-12-t');
+        //return $checkBudget;
+        //return Input::get('is_half_day');
 
         foreach ($leaveDate as $key=>$singleDate):
             if($singleDate == '') {
@@ -265,7 +273,46 @@ class UserController extends Controller {
                 return 'You Can Apply leave only for this Year';
             }
         endforeach;
+            if($leaveCategoryId == 25){
+                $isHalfDay = Input::get('is_half_day');
+                if(isset($isHalfDay)){
+                    if(count($leaveDate) > 1){
+                        return 'Half day is only applicable for single date';
+                    }
+                    $attendance = UserDetails::where('user_id', Auth::user()->id)
+                        ->where('login_date', $leaveDate[0])
+                        ->first();
+                    if(!$attendance){
+                        return 'Half day is only applicable for the date you punched in';
+                    }
+                }else{
+                    foreach ($leaveDate as $singleDate){
+                        $attendance = UserDetails::where('user_id', Auth::user()->id)
+                            ->where('login_date', $singleDate)
+                            ->first();
+                        if($attendance){
+                            return 'Full day is only applicable for the date you never punched in';
+                        }
 
+                        $holidays = HolidayInfo::where('holiday', $singleDate)
+                            ->first();
+                        if($holidays){
+                            return 'Full day is only applicable for the date is not a Holiday';
+                        }
+
+                        $dayOfWeek = Carbon::parse($singleDate)->dayOfWeek;
+                        if(in_array($dayOfWeek, [Carbon::SATURDAY, Carbon::SUNDAY])){
+                            return 'Full day is not applicable for the weekend date';
+                        }
+                    }
+                }
+
+                $checkBudget[25] = [
+                    'id'=> 25,
+                    'category'=>'AuthorizeLeave',
+                    'categoryBudget'=>31,
+                ];
+            }
         foreach($checkBudget as $budget):
             if($budget['id'] == $leaveCategoryId) {
                 $key=$key+1;
@@ -274,9 +321,9 @@ class UserController extends Controller {
                 }
             }
         endforeach;
-
+        //return $checkBudget;
         foreach ($leaveDate as $singleDate):
-             $checkExisting  = Leave::where('leave_date' , $singleDate)
+            $checkExisting  = Leave::where('leave_date' , $singleDate)
                 ->where('user_id', Auth::user()->id)
                 ->first();
             if($checkExisting) {
@@ -290,6 +337,9 @@ class UserController extends Controller {
             $leaveSave->user_id = Auth::user()->id;
             $leaveSave->leave_category_id = $leaveCategoryId;
             $leaveSave->leave_cause = $leaveCause;
+            if(isset($isHalfDay)){
+                $leaveSave->is_half_day = .5;
+            }
             $leaveSave->save();
         }
         return 'true';
@@ -314,6 +364,7 @@ class UserController extends Controller {
             ->where('leave_categories.company_id', Auth::user()->company_id)
             ->groupBy('leaves.leave_category_id','leave_categories.category','leave_categories.category_num','leave_categories.id')
             ->get();
+        //return $leaveByCategory;
         $allCategory = LeaveCategories::all();
         $leaveBudget = array();
         foreach($allCategory as $key=>$category):
@@ -334,9 +385,27 @@ class UserController extends Controller {
             }
             $leaveBudget[$category->id]["categoryTotal"] = $category->category_num;
         endforeach;
+
+        if(\App\User::find(Auth::user()->id)->yearly_leave_balance){
+            $leaveBudget[24]['categoryTotal'] =  \App\User::find(Auth::user()->id)->yearly_leave_balance;
+            $leaveBudget[24]['categoryBudget'] = ($leaveBudget[24]['categoryTotal'] - $leaveBudget[24]['categoryUsed']);
+        }
+
+        //Refine  half day calculation of authorize leave
+        $authorizedHalfDayLeave = Leave::where('leave_category_id', 25)
+            ->where('user_id', Auth::user()->id)
+            ->where('leave_status', 1)
+            ->sum('is_half_day');
+        $leaveBudget[25]['categoryUsed'] -= $authorizedHalfDayLeave;
+        //return $leaveBudget;
+
         //return $leaveBudget;
         Leave::where('user_id', Auth::user()->id)->update(array('user_noti_status' => 0));
-        $data['myLeave'] = Leave::where('user_id', Auth::user()->id)->get();
+        $data['myLeave'] = Leave::with(['LeaveCategories'])
+            ->where('user_id', Auth::user()->id)
+            ->orderBy('id', 'desc')
+            ->get();
+        //return $data['myLeave']->first()->LeaveCategories;
         $data['leaveBudget'] = $leaveBudget;
         return view('Users.myLeave', $data);
     }
@@ -402,9 +471,8 @@ class UserController extends Controller {
             $leaves = Leave::whereBetween('leave_date', [$data['startDate'], $data['endDate']])
                 ->where('user_id', $data['id'])
                 ->where('leave_status', 1)
-                ->select('leave_date')
-                ->lists('leave_date')
-                ->toArray();
+                ->select('leave_date','leave_category_id','is_half_day')
+                ->get();
             //return $leaves;
 
             $attendance = UserDetails::select(DB::raw('timediff(logout_time,login_time) as timediff'),
@@ -433,14 +501,23 @@ class UserController extends Controller {
 
             //return $attendanceReport;
             // Add Leave records
-            foreach ($leaves as $leaveDate) {
+            foreach ($leaves as $leave) {
+                $leaveDate = $leave->leave_date;
+                $_status = 'On Leave';
+                if($leave->leave_category_id == 25){
+                    if($leave->is_half_day){
+                        $_status = 'Authorized [Half day]';
+                    }else{
+                        $_status = 'Authorized [Full day]';
+                    }
+                }
                 $attendanceReport[] = [
                     'id' => uniqid(), // temp ID
                     'login_date' => $leaveDate,
                     'logout_date' => $leaveDate,
                     'login_time' => $leaveDate . ' 00:00:00',
                     'logout_time' => $leaveDate . ' 23:59:59',
-                    'status' => 'On Leave',
+                    'status' => $_status,
                 ];
             }
 
@@ -538,12 +615,31 @@ class UserController extends Controller {
                 ->groupBy('login_date')
                 ->orderBy('login_date', 'ASC')
                 ->get()
+                ->map(function($item){
+                    $item->work_time_second = $this->durationToSeconds($item->total_work_time);
+                    $item->break_time_second = 0;
+                    if($item->total_break_time){
+                        $item->break_time_second = $this->durationToSeconds($item->total_break_time);
+                    }
+                    return $item;
+                })
                 ->toArray();
             //return $data['attendanceReport'];
             if (!$data['attendanceReport']) {
                 Session::flash('flashError', 'You are not Any Work From '.$data['startDate'].' to '. $data['endDate']);
                 return redirect('user/table-report');
             }
+
+            $totalWorkSeconds = collect($data['attendanceReport'])->sum('work_time_second');
+            $totalBreakSeconds = collect($data['attendanceReport'])->sum('break_time_second');
+            $totalActiveSeconds = $totalWorkSeconds - $totalBreakSeconds;
+            //return $totalWorkSeconds;
+            $data['summary'] = [
+                'total_work_time' => $this->formatDuration($totalWorkSeconds),
+                'total_break_time' => $this->formatDuration($totalBreakSeconds),
+                'total_active_time' => $this->formatDuration($totalActiveSeconds),
+            ];
+            //return $data['summary'];
 
             return view('Users.report', $data);
         }else {
@@ -564,6 +660,20 @@ class UserController extends Controller {
             $dates[] = date('Y-m-d', strtotime(end($dates) . ' +1 day'));
         }
         return $dates;
+    }
+
+    function durationToSeconds($time) {
+        if (!$time) return 0;
+        list($h, $m, $s) = explode(':', $time);
+        return ($h * 3600) + ($m * 60) + $s;
+    }
+    function formatDuration($seconds)
+    {
+        $hours = floor($seconds / 3600);
+        $minutes = floor(($seconds % 3600) / 60);
+        $remainingSeconds = $seconds % 60;
+
+        return sprintf('%02d:%02d:%02d', $hours, $minutes, $remainingSeconds);
     }
 
     /**

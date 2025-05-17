@@ -49,13 +49,20 @@
                         <div class="control-group">
                             <label class="control-label" for="description">Leave category</label>
                             <div class="controls">
-                                <select required name="leave_category_id">
+                                <select required name="leave_category_id" id="leave_category_id">
                                     <option value="">Select a category</option>
                                     <?php foreach($leaveBudget as $category):?>
                                     <?php if($category['categoryBudget']>0){?>
                                     <option value="<?php echo $category['id']?>"><?php echo $category['category']?></option>
                                     <?php } endforeach;?>
+                                    <option value="25">Authorize Leave</option>
                                 </select>
+                            </div>
+                        </div>
+                        <div class="control-group" id="half_day_option_field" style="display: none">
+                            <label class="control-label" for="is_half_day">Half day</label>
+                            <div class="controls">
+                                <input type="checkbox" id="is_half_day" name="is_half_day" value=".5">
                             </div>
                         </div>
                         <div class="control-group">
@@ -122,9 +129,18 @@
                     dateFormat:'yy-mm-dd'
                 });
             });
+
+            $("#leave_category_id").on('change', function(){
+                let selectedCategory = $(this).val();
+                if(selectedCategory == 25){
+                    $("#half_day_option_field").show();
+                }else{
+                    $("#half_day_option_field").hide();
+                    $("#is_half_day").prop('checked', false);
+                }
+            })
         });
         $(document).on('click', ".remove", function () {
-//            alert('fsd');
             $(this).parent().parent().closest(".control-group").html('');
         });
     </script>

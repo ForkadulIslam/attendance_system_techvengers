@@ -12,7 +12,8 @@
         "doctrine/dbal": "^2.6@dev",
         "barryvdh/laravel-debugbar": "^2.0",
         "rap2hpoutre/laravel-log-viewer": "^0.4.2",
-        "appzcoder/crud-generator": "^1.0"
+        "appzcoder/crud-generator": "^1.0",
+        "guzzlehttp/guzzle": "*"
     },
     "require-dev": {
         "fzaninotto/faker": "~1.4",

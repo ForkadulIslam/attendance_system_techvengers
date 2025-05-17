@@ -15,7 +15,11 @@
         <ul class="breadcrumb">
             @foreach($leaveBudget as $key=>$leave)
             <li>
+                @if($leave['id'] == 25)
+                    <p>{!! $leave['category'] !!}:<span class="divider" style="font-weight: 700; font-size: 15px; color: #009877; padding-left: 0px"> {!! $leave['categoryUsed'] !!} </span></p>
+                @else
                 <p>{!! $leave['category'] !!}:<span class="divider" style="font-weight: 700; font-size: 15px; color: #009877; padding-left: 0px"> {!! $leave['categoryTotal'] !!}/{!! $leave['categoryBudget'] !!}</span> </p>
+                @endif
             </li>
             @endforeach
         </ul>
@@ -32,7 +36,7 @@
                     <tr>
                         <th>Username</th>
                         <th>Leave Date</th>
-                        <th>Leave Catagory</th>
+                        <th>Leave Category</th>
                         <th>Leave Reason</th>
                         <th>Status</th>
                     </tr>
@@ -44,10 +48,15 @@
                         <td><?php echo Auth::user()->username?></td>
                         <td class="center"><?php echo $leave->leave_date?></td>
                         <td class="center"><?php
-                            if(isset($leave->LeaveCategories->category))
+                            if(isset($leave->LeaveCategories->category)){
                                 echo $leave->LeaveCategories->category;
-                            else
+                                if($leave->is_half_day != null){
+                                    echo " [Half day]";
+                                }
+                            }
+                            else{
                                 echo 'Uncategorized';
+                            }
                             ?></td>
                         <td class="center"><?php echo $leave->leave_cause?></td>
                         <td class="center">

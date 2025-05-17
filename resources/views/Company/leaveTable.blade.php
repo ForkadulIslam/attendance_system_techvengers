@@ -5,6 +5,8 @@
         <th>Leave Date</th>
         <th>Leave Catagory</th>
         <th>Leave Reason</th>
+        <th>Application date</th>
+        <th>Approved date</th>
         <th>Status</th>
         <th>Action</th>
     </tr>
@@ -12,17 +14,28 @@
     <tbody id="ajaxUpdate">
     <?php if($allLeave){
     foreach ($allLeave as $leave):
+
+    if($leave->LeaveCategories->id == 24){
+        $leave->LeaveCategories->category_num = \App\User::find($leave->user_id)->yearly_leave_balance;
+    }
     ?>
     <tr id="row<?php echo $leave->id ?>">
         <td><?php echo $leave->User->username?></td>
         <td class="center"><?php echo $leave->leave_date?></td>
         <td class="center"><?php
-            if(isset($leave->LeaveCategories->category))
+            if(isset($leave->LeaveCategories->category)){
                 echo $leave->LeaveCategories->category;
-            else
+                if($leave->is_half_day){
+                    echo "[Half day]";
+                }
+            } else{
                 echo 'Uncategorized';
-            ?></td>
+            }
+            ?>
+        </td>
         <td class="center"><?php echo $leave->leave_cause?></td>
+        <td class="center">{!! $leave->created_at->toDateString() !!}</td>
+        <td class="center">{!! $leave->leave_status==1 ? $leave->updated_at->toDateString() : 'N/A' !!}</td>
         <td class="center">
             <?php
             if($leave->leave_status==0){ ?>
@@ -105,6 +118,7 @@
                     type: "GET",
                     data: {status: values, categoryID:categoryID, userID:userID, categoryBudget:categoryBudget},
                     success: function(data) {
+                        console.log(data);
                         if(data == 'false'){
                             $.pnotify({
                                 title: 'Error',
@@ -142,6 +156,7 @@
     endforeach;
     } else{ ?>
     <tr>
+        <td>No data are available</td>
         <td>No data are available</td>
         <td>No data are available</td>
         <td>No data are available</td>

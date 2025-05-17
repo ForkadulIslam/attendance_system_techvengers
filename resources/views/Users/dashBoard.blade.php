@@ -37,18 +37,20 @@
             else
                 $punch_url = 'punch-in';
             ?>
-                <a href="#" onclick="confirmPunch('{!! URL::to("user/$punch_url/") !!}', '{{ $status }}')" class="btn btn-large btn-success">
-                    {{ $status }}
-                </a>
 
                 @if (\App\UserBreak::isUserOnBreak(Auth::id()))
                     <a href="#" onclick="confirmPunch('{!! route('break.end') !!}', 'End Break')" class="btn btn-large btn-danger">
                         End Break
                     </a>
                 @else
+                    <a href="#" onclick="confirmPunch('{!! URL::to("user/$punch_url/") !!}', '{{ $status }}')" class="btn btn-large btn-success">
+                        {{ $status }}
+                    </a>
+                    @if($status == 'Punch Out')
                     <a href="#" onclick="confirmPunch('{!! route('break.start') !!}', 'Start Break')" class="btn btn-large btn-warning">
                         Start Break
                     </a>
+                    @endif
                 @endif
         </div>
     </div>
@@ -292,6 +294,7 @@
         location.reload();
     }, 30000);
     function confirmPunch(url, status) {
+        console.log(url);
         Swal.fire({
             title: "Are you sure?",
             text: "You are about to " + status.toLowerCase(),

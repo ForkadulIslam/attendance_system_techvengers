@@ -36,3 +36,13 @@ Route::group(['middleware' => 'auth.company'], function () {
 });
 
 Route::get('logs', '\Rap2hpoutre\LaravelLogViewer\LogViewerController@index');
+
+
+//API routes
+Route::post('api/break-start', 'ApiController@breakStart');
+Route::post('api/break-end', 'ApiController@breakEnd');
+Route::post('api/punch-in', 'ApiController@punchIn');
+Route::post('api/punch-out', 'ApiController@punchOut');
+Route::post('api/login', 'ApiController@login');
+Route::get('api/userStatus', 'ApiController@userStatus');
+Route::post('api/screenshot-upload', 'ApiController@screenshotUpload');
