@@ -12,6 +12,7 @@ use App\UserDetails;
 use App\UserRegistered;
 use Auth;
 use Carbon\Carbon;
+use Illuminate\Support\Str;
 use Request;
 use Response;
 use Session;
@@ -1964,5 +1965,101 @@ class CompanyController extends Controller
         Session::flash('success', 'Attendance log deleted successfully!');
         return redirect()->back();
     }
+
+    public function getScreenshotListRequest(){
+        $users = User::where('company_id', auth()->user()->company_id)
+            ->where('status', 1)
+            ->where('user_label', 2)
+            ->orderBy('username')
+            ->select('username', 'id')
+            ->get();
+
+        return view('Company.userScreenshotsRequest', compact('users'));
+    }
+
+    public function postScreenshotsByUserAndDate()
+    {
+        $userId = Input::get('user_id');
+        $date   = Input::get('date');        // expected YYYY-MM-DD
+
+        if (!$userId || !$date) {
+            return response()->json(
+                ['error' => 'user_id and date are required'],
+                422
+            );
+        }
+
+        $users = User::where('company_id', auth()->user()->company_id)
+            ->where('status', 1)
+            ->where('user_label', 2)
+            ->orderBy('username')
+            ->select('username', 'id')
+            ->get();
+
+        /* ---------- Cloudinary REST call ------------------------------------ */
+        $cloud  = [
+            'name'   => 'dmncite2f',
+            'key'    => '375416852919216',
+            'secret' => 'phgjs_lv4FERMePh0KZJx_ZygM8',
+        ];
+
+        $client = new Client([
+            'base_uri' => "https://api.cloudinary.com/v1_1/{$cloud['name']}/",
+            'auth'     => [$cloud['key'], $cloud['secret']],
+            'timeout'  => 15,
+        ]);
+
+        $resources = [];
+        $cursor    = null;
+
+        do {
+            $query = [
+                'type'        => 'upload',
+                'prefix'      => 'screenshots/',   // only our folder
+                'max_results' => 500,
+                'context'     => true,             // include custom context
+            ];
+            if ($cursor) $query['next_cursor'] = $cursor;
+
+            $resp     = $client->get('resources/image', ['query' => $query]);
+            $payload  = json_decode($resp->getBody()->getContents(), true);
+
+            if (!isset($payload['resources'])) break;
+
+            $resources = array_merge($resources, $payload['resources']);
+            $cursor    = $payload['next_cursor'] ?? null;
+
+        } while ($cursor);
+        /* ------------------------------------------------------------------- */
+
+        $filtered = array_values(array_filter($resources, function ($res) use ($userId, $date) {
+
+            $ctx = $res['context']['custom'] ?? [];
+
+            /* --------- 1. user match --------------------------------------- */
+            if (($ctx['user_id'] ?? null) != $userId) {
+                return false;
+            }
+
+            /* --------- 2. date match  -------------------------------------- */
+            // NEW screenshots have ctx['date'] === 'YYYY-MM-DD'
+            if (isset($ctx['date']) && $ctx['date'] === $date) {
+                return true;
+            }
+
+            // OLD screenshots: only timestamp (ms). Convert on-the-fly
+            if (isset($ctx['timestamp'])) {
+                $ts  = (int) substr($ctx['timestamp'], 0, 10);      // ms → s
+                $day = date('Y-m-d', $ts);
+                return $day === $date;
+            }
+
+            return false;   // no usable metadata
+        }));
+        $shots = $filtered;
+        //return $shots;
+        return view('Company.userScreenshotsRequest', compact('users', 'shots'));
+    }
+
 
 }
