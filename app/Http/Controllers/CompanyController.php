@@ -1577,7 +1577,7 @@ class CompanyController extends Controller
         usort($loggedOutUsers, function ($a, $b) {
             return strtotime($a['logged_out_at']) - strtotime($b['logged_out_at']);
         });
-        \Log::info($usersIdleTime);
+
         return [
             'punchedInUser' => $punchedInUsers,  // Now excludes users who are on break
             'notPunchedInUser' => $notPunchedInUsers,

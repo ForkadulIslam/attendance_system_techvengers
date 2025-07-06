@@ -336,6 +336,7 @@
                         if (status === 'Punch Out') {
                             const now = new Date();
                             messagePayload.logged_out_at = now.toISOString();
+                            messagePayload.total_break_duration = data.total_break_duration; // Ensure break duration is sent
                         }
                     } catch (error) {
                         console.error('Error fetching user data:', error);
