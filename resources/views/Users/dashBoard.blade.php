@@ -317,13 +317,30 @@
 
                 if (status === 'Punch In') {
                     const now = new Date();
-                    const logged_in_at = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-                    messagePayload.logged_in_at = logged_in_at;
+                    messagePayload.logged_in_at = now.toISOString();
                     messagePayload.total_break_duration = '00:00';
                 } else if (status === 'Start Break') {
                     const now = new Date();
-                    const break_start_time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-                    messagePayload.break_start_time = break_start_time;
+                    messagePayload.break_start_time = now.toISOString();
+                } else if (status === 'End Break' || status === 'Punch Out') {
+                    try {
+                        const response = await fetch('/api/getUser/' + '{{ Auth::user()->id }}');
+                        const data = await response.json();
+                        console.log(data);
+                        let loggedInAtApi = data.logged_in_at;
+                        if (loggedInAtApi && loggedInAtApi.includes(' ')) {
+                            loggedInAtApi = loggedInAtApi.replace(' ', 'T');
+                        }
+                        messagePayload.logged_in_at = new Date(loggedInAtApi).toISOString();
+                        messagePayload.total_break_duration = data.total_break_duration;
+                        if (status === 'Punch Out') {
+                            const now = new Date();
+                            messagePayload.logged_out_at = now.toISOString();
+                        }
+                    } catch (error) {
+                        console.error('Error fetching user data:', error);
+                        // Proceed without the extra data if API call fails
+                    }
                 }
 
                 try {

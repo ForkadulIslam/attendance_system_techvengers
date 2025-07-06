@@ -1513,8 +1513,25 @@ class CompanyController extends Controller
                     ->whereNull('break_end')
                     ->latest()
                     ->first();
+                // Always add to punchedInUsers if punched in
+                $workingHours = Carbon::parse($punchData->login_time)
+                    ->diff(Carbon::now())
+                    ->format('%H:%I');
+                $punchedInUsers[] = [
+                    'id' => $user->id,
+                    'name' => $userInfo,
+                    'working_hours' => $workingHours,
+                    'total_break_duration' => Carbon::parse($totalBreakDuration)->format('H:i'),
+                    'logged_in_at' => Carbon::parse($punchData->login_time)->format("H:i A")
+                ];
+
+                // Check if the user is on break
+                $activeBreak = UserBreak::where('user_id', $user->id)
+                    ->whereNull('break_end')
+                    ->latest()
+                    ->first();
                 if ($activeBreak) {
-                    // User is on break, so add to "On Break" list and exclude from "On Desk"
+                    // User is on break, so add to "On Break" list
                     $breakDuration = Carbon::parse($activeBreak->break_start)
                         ->diff(Carbon::now())
                         ->format('%H:%I');
@@ -1523,21 +1540,8 @@ class CompanyController extends Controller
                         'name' => $userInfo,
                         'break_duration' => $breakDuration,
                         'total_break_duration' => Carbon::parse($totalBreakDuration)->format('H:i'),
-                        'logged_in_at' => Carbon::parse($punchData->login_time)->format("H:i A")
-                    ];
-                }
-                else {
-                    // User is working (not on break), add to "On Desk" list
-                    $workingHours = Carbon::parse($punchData->login_time)
-                        ->diff(Carbon::now())
-                        ->format('%H:%I');
-                    $punchedInUsers[] = [
-                        'id' => $user->id,
-                        'name' => $userInfo,
-                        'working_hours' => $workingHours,
-                        'total_break_duration' => Carbon::parse($totalBreakDuration)->format('H:i'),
-                        'logged_in_at' => Carbon::parse($punchData->login_time)->format("H:i A")
-
+                        'logged_in_at' => Carbon::parse($punchData->login_time)->format("H:i A"),
+                        'break_started_at' => Carbon::parse($activeBreak->break_start)->format("H:i A")
                     ];
                 }
             } else {

@@ -190,8 +190,7 @@
                             <a style="font-size: 13px; color:#666;"
                                href="{!! URL::to('company/break-time-log') !!}?s_date=<?php echo date('Y-m-d', time()) ?>&e_date=<?php echo date('Y-m-d') ?>&id=<?php echo $user['id'] ?>">
                                 {!! $user['name'] !!}
-                                <small>{!! $user['break_duration'] !!} || IN : {!! $user['logged_in_at'] !!}</small>
-                                <small class="badge badge-brown pull-right">{!! $user['total_break_duration'] !!}</small>
+                                <small>Break Started: {!! $user['break_started_at'] !!}</small>
                             </a>
                         </li>
                     @endforeach
@@ -500,7 +499,7 @@
 
             // Handle attendance updates
             async function handleAttendanceUpdate(message) {
-                const { status, user_id, name, logged_in_at, total_break_duration } = message.data;
+                const { status, user_id, name, logged_in_at, total_break_duration, break_start_time, logged_out_at } = message.data;
 
                 if (status === 'Punch In') {
                     // Remove user from Absent list
@@ -515,11 +514,18 @@
                     const punchedInList = document.getElementById('punched-in-list');
                     const punchedInUserElement = document.createElement('li');
                     punchedInUserElement.id = `punched-in-user-${user_id}`;
+                    let formatted_logged_in_at = '';
+                    try {
+                        formatted_logged_in_at = new Date(logged_in_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'America/New_York' });
+                    } catch (e) {
+                        console.error('Error formatting logged_in_at:', e, logged_in_at);
+                        formatted_logged_in_at = 'Invalid Time'; // Fallback
+                    }
                     punchedInUserElement.innerHTML = `
                         <a style="font-size: 13px; color:#666;"
                            href="/company/attendance-log?s_date=<?php echo date('Y-m-d', time()) ?>&e_date=<?php echo date('Y-m-d') ?>&id=${user_id}">
-                            ${name} <small>Break ${total_break_duration}</small>
-                            <span class="badge badge-brown pull-right">${logged_in_at}</span>
+                            ${name} ${total_break_duration && total_break_duration !== '00:00' ? `<small>Break ${total_break_duration}</small>` : ''}
+                            <span class="badge badge-brown pull-right">${formatted_logged_in_at}</span>
                         </a>
                     `;
                     punchedInList.appendChild(punchedInUserElement);
@@ -527,23 +533,16 @@
                     const punchedInCount = document.getElementById('punched-in-count');
                     punchedInCount.textContent = parseInt(punchedInCount.textContent) + 1;
                 } else if (status === 'Start Break') {
-                    // Remove user from Punched In list
-                    const punchedInUserElement = document.getElementById(`punched-in-user-${user_id}`);
-                    if (punchedInUserElement) {
-                        punchedInUserElement.remove();
-                        const punchedInCount = document.getElementById('punched-in-count');
-                        punchedInCount.textContent = parseInt(punchedInCount.textContent) - 1;
-                    }
-
                     // Add user to Break list
                     const onBreakList = document.getElementById('on-break-list');
                     const onBreakUserElement = document.createElement('li');
                     onBreakUserElement.id = `on-break-user-${user_id}`;
+                    const formatted_break_start_time = new Date(break_start_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'America/New_York' });
                     onBreakUserElement.innerHTML = `
                         <a style="font-size: 13px; color:#666;"
                            href="/company/break-time-log?s_date=<?php echo date('Y-m-d', time()) ?>&e_date=<?php echo date('Y-m-d') ?>&id=${user_id}">
                             ${name}
-                            <small>IN : ${break_start_time}</small>
+                            <small>Break Started: ${formatted_break_start_time}</small>
                         </a>
                     `;
                     onBreakList.appendChild(onBreakUserElement);
@@ -559,21 +558,25 @@
                         onBreakCount.textContent = parseInt(onBreakCount.textContent) - 1;
                     }
 
-                    // Add user to Punched In list
-                    const punchedInList = document.getElementById('punched-in-list');
-                    const punchedInUserElement = document.createElement('li');
-                    punchedInUserElement.id = `punched-in-user-${user_id}`;
-                    punchedInUserElement.innerHTML = `
+                    // Update break duration in Punched In list
+                    const punchedInUserElement = document.getElementById(`punched-in-user-${user_id}`);
+                    if(punchedInUserElement) {
+                        let formatted_logged_in_at = '';
+                        try {
+                            formatted_logged_in_at = new Date(logged_in_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'America/New_York' });
+                        } catch (e) {
+                            console.error('Error formatting logged_in_at:', e, logged_in_at);
+                            formatted_logged_in_at = 'Invalid Time'; // Fallback
+                        }
+                        punchedInUserElement.innerHTML = `
                         <a style="font-size: 13px; color:#666;"
                            href="/company/attendance-log?s_date=<?php echo date('Y-m-d', time()) ?>&e_date=<?php echo date('Y-m-d') ?>&id=${user_id}">
-                            ${name} <small>Break ${total_break_duration}</small>
-                            <span class="badge badge-brown pull-right">${logged_in_at}</span>
+                            ${name} ${total_break_duration && total_break_duration !== '00:00' ? `<small>Break ${total_break_duration}</small>` : ''}
+                            <span class="badge badge-brown pull-right">${formatted_logged_in_at}</span>
                         </a>
                     `;
-                    punchedInList.appendChild(punchedInUserElement);
+                    }
 
-                    const punchedInCount = document.getElementById('punched-in-count');
-                    punchedInCount.textContent = parseInt(punchedInCount.textContent) + 1;
                 } else if (status === 'Punch Out') {
                     // Remove user from Punched In list
                     const punchedInUserElement = document.getElementById(`punched-in-user-${user_id}`);
@@ -595,10 +598,24 @@
                     const punchedOutList = document.getElementById('punched-out-list');
                     const punchedOutUserElement = document.createElement('li');
                     punchedOutUserElement.id = `punched-out-user-${user_id}`;
+                    let formatted_logged_out_at = '';
+                    try {
+                        formatted_logged_out_at = new Date(logged_out_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'America/New_York' });
+                    } catch (e) {
+                        console.error('Error formatting logged_out_at:', e, logged_out_at);
+                        formatted_logged_out_at = 'Invalid Time'; // Fallback
+                    }
+                    let formatted_logged_in_at_punch_out = '';
+                    try {
+                        formatted_logged_in_at_punch_out = new Date(logged_in_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'America/New_York' });
+                    } catch (e) {
+                        console.error('Error formatting logged_in_at_punch_out:', e, logged_in_at);
+                        formatted_logged_in_at_punch_out = 'Invalid Time'; // Fallback
+                    }
                     punchedOutUserElement.innerHTML = `
                         ${name}
-                        <span class="badge badge-brown pull-right">${logged_out_at}</span>
-                        <p>IN: ${logged_in_at} || Break: ${total_break_duration}</p>
+                        <span class="badge badge-brown pull-right">${formatted_logged_out_at}</span>
+                        <p>IN: ${formatted_logged_in_at_punch_out} || Break: ${total_break_duration}</p>
                     `;
                     punchedOutList.appendChild(punchedOutUserElement);
 

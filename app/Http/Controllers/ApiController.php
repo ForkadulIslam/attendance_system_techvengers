@@ -342,8 +342,6 @@ class ApiController extends Controller
             ->latest()
             ->first();
 
-        \Log::info($punchData);
-
         $totalBreakTime = DB::table('user_breaks')
             ->where('user_id', $id)
             ->where('break_start', '>=', date('Y-m-d') . ' 00:00:00')
@@ -352,13 +350,22 @@ class ApiController extends Controller
             ->select(DB::raw('SEC_TO_TIME(SUM(TIME_TO_SEC(TIMEDIFF(break_end, break_start)))) AS total_break_time'))
             ->first();
 
-        $totalBreakDuration = $totalBreakTime->total_break_time ?? '00:00';
+        $totalBreakDurationFormatted = '00:00';
+        if ($totalBreakTime && $totalBreakTime->total_break_time) {
+            $totalBreakDurationFormatted = \Carbon\Carbon::parse($totalBreakTime->total_break_time)->format('H:i');
+        }
+
+        $loggedInAtFormatted = '';
+        if ($punchData && $punchData->login_time) {
+            // login_time is already a full datetime string, so parse it directly
+            $loggedInAtFormatted = Carbon::parse($punchData->login_time)->format('Y-m-d H:i:s');
+        }
 
         return response()->json([
             'id' => $user->id,
             'name' => $user->username,
-            'total_break_duration' => \Carbon\Carbon::parse($totalBreakDuration)->format('H:i'),
-            'logged_in_at' => \Carbon\Carbon::parse($punchData->login_time)->format("H:i A"),
+            'total_break_duration' => $totalBreakDurationFormatted,
+            'logged_in_at' => $loggedInAtFormatted,
         ]);
     }
 

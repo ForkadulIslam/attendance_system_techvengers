@@ -47,3 +47,4 @@ Route::post('api/login', 'ApiController@login');
 Route::get('api/userStatus', 'ApiController@userStatus');
 Route::post('api/screenshot-upload', 'ApiController@screenshotUpload');
 Route::post('api/idle-time', 'ApiController@idleTimeStore');
+Route::get('api/getUser/{id}', 'ApiController@getUser');
