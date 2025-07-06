@@ -63,6 +63,8 @@ class UserController extends Controller {
                 $timeDiff = 1;
             Session::put('timeTrack', $timeDiff);
 
+        } else {
+            Session::forget('timeTrack'); // Clear timeTrack if no active punch-in
         }
     }
 
@@ -208,7 +210,7 @@ class UserController extends Controller {
         $last_day_this_year  =date('Y-12-t');
         $leaveByCategory = DB::table('leaves')
             ->join('leave_categories', 'leaves.leave_category_id', '=', 'leave_categories.id')
-            ->select(DB::raw('count(leaves.leave_category_id) as category_used'),
+            ->select(DB::raw('SUM(CASE WHEN is_half_day = 1 THEN 0.5 ELSE 1 END) as category_used'),
             'leave_categories.id','leave_categories.category','leave_categories.category_num')
             ->where('leaves.leave_date','>=', $first_day_this_year)
             ->where('leaves.leave_date','<=', $last_day_this_year)
@@ -233,6 +235,7 @@ class UserController extends Controller {
                 $leaveBudget[$category->id]["categoryBudget"] = $category->category_num;
             }
             else {
+                \Log::info($expectedArray[0]->category_used);
                 $leaveBudget[$category->id]["categoryUsed"] = $expectedArray[0]->category_used;
                 $leaveBudget[$category->id]["categoryBudget"] = $category->category_num - $expectedArray[0]->category_used;
             }
@@ -259,9 +262,9 @@ class UserController extends Controller {
         $leaveDate = Input::get('leave_date');
         $firstDayThisYear = date('Y-01-01');
         $lastDayThisYear  = date('Y-12-t');
-        //return $checkBudget;
-        //return Input::get('is_half_day');
+        $isHalfDay = Input::get('is_half_day');
 
+        $totalApplied = 0;
         foreach ($leaveDate as $key=>$singleDate):
             if($singleDate == '') {
                 return 'Please fill all Leave date field';
@@ -272,52 +275,59 @@ class UserController extends Controller {
             elseif($singleDate < $firstDayThisYear) {
                 return 'You Can Apply leave only for this Year';
             }
+            if (isset($isHalfDay)) {
+                $totalApplied += 0.5;
+            } else {
+                $totalApplied += 1;
+            }
         endforeach;
-            if($leaveCategoryId == 25){
-                $isHalfDay = Input::get('is_half_day');
-                if(isset($isHalfDay)){
-                    if(count($leaveDate) > 1){
-                        return 'Half day is only applicable for single date';
-                    }
-                    $attendance = UserDetails::where('user_id', Auth::user()->id)
-                        ->where('login_date', $leaveDate[0])
-                        ->first();
-                    if(!$attendance){
-                        return 'Half day is only applicable for the date you punched in';
-                    }
-                }else{
-                    foreach ($leaveDate as $singleDate){
-                        $attendance = UserDetails::where('user_id', Auth::user()->id)
-                            ->where('login_date', $singleDate)
-                            ->first();
-                        if($attendance){
-                            return 'Full day is only applicable for the date you never punched in';
-                        }
 
-                        $holidays = HolidayInfo::where('holiday', $singleDate)
-                            ->first();
-                        if($holidays){
-                            return 'Full day is only applicable for the date is not a Holiday';
-                        }
-
-                        $dayOfWeek = Carbon::parse($singleDate)->dayOfWeek;
-                        if(in_array($dayOfWeek, [Carbon::SATURDAY, Carbon::SUNDAY])){
-                            return 'Full day is not applicable for the weekend date';
-                        }
-                    }
+        if(isset($isHalfDay)){
+            if(count($leaveDate) > 1){
+                return 'Half day is only applicable for single date';
+            }
+            $attendance = UserDetails::where('user_id', Auth::user()->id)
+                ->where('login_date', $leaveDate[0])
+                ->first();
+            if(!$attendance){
+                return 'Half day is only applicable for the date you punched in';
+            }
+        }else{
+            foreach ($leaveDate as $singleDate){
+                $attendance = UserDetails::where('user_id', Auth::user()->id)
+                    ->where('login_date', $singleDate)
+                    ->first();
+                if($attendance){
+                    return 'Full day is only applicable for the date you never punched in';
                 }
 
-                $checkBudget[25] = [
-                    'id'=> 25,
-                    'category'=>'AuthorizeLeave',
-                    'categoryBudget'=>31,
-                ];
+                $holidays = HolidayInfo::where('holiday', $singleDate)
+                    ->first();
+                if($holidays){
+                    return 'Full day is only applicable for the date is not a Holiday';
+                }
+
+                $dayOfWeek = Carbon::parse($singleDate)->dayOfWeek;
+                if(in_array($dayOfWeek, [Carbon::SATURDAY, Carbon::SUNDAY])){
+                    return 'Full day is not applicable for the weekend date';
+                }
             }
+        }
+        if($leaveCategoryId == 25){
+            $checkBudget[25] = [
+                'id'=> 25,
+                'category'=>'AuthorizeLeave',
+                'categoryBudget'=>31,
+            ];
+        }
+
         foreach($checkBudget as $budget):
+
             if($budget['id'] == $leaveCategoryId) {
-                $key=$key+1;
-                if($budget['categoryBudget']<$key) {
-                    return 'You Cross Your Leave Budget.PLease Check Again.';
+                \Log::info($totalApplied);
+                \Log::info($budget);
+                if($budget['categoryBudget'] < $totalApplied) {
+                    return 'You have exceeded your leave budget. Please check again.';
                 }
             }
         endforeach;
@@ -331,6 +341,7 @@ class UserController extends Controller {
             }
         endforeach;
 
+
         foreach ($leaveDate as $singleDate){
             $leaveSave = new Leave();
             $leaveSave->leave_date = $singleDate;
@@ -338,7 +349,7 @@ class UserController extends Controller {
             $leaveSave->leave_category_id = $leaveCategoryId;
             $leaveSave->leave_cause = $leaveCause;
             if(isset($isHalfDay)){
-                $leaveSave->is_half_day = .5;
+                $leaveSave->is_half_day = 1;
             }
             $leaveSave->save();
         }

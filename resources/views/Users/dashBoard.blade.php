@@ -289,7 +289,11 @@
     </script>
 @endif
 
+<script src="https://cdn.ably.io/lib/ably.min-2.js"></script>
 <script>
+    const ably = new Ably.Realtime('BEm5bw.24xxVQ:3nIhmsZUfMy_KRKWtOd5KcitYvWF-5VAUeTCieD_41k');
+    const channel = ably.channels.get('attendance-updates');
+
     setInterval(function() {
         location.reload();
     }, 30000);
@@ -303,9 +307,32 @@
             confirmButtonColor: "#28a745",
             cancelButtonColor: "#d33",
             confirmButtonText: "Yes, " + status.toLowerCase() + "!"
-        }).then((result) => {
+        }).then(async (result) => {
             if (result.isConfirmed) {
-                window.location.href = url;
+                let messagePayload = {
+                    status: status,
+                    user_id: '{{ Auth::user()->id }}',
+                    name: '{{ Auth::user()->username }}'
+                };
+
+                if (status === 'Punch In') {
+                    const now = new Date();
+                    const logged_in_at = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+                    messagePayload.logged_in_at = logged_in_at;
+                    messagePayload.total_break_duration = '00:00';
+                } else if (status === 'Start Break') {
+                    const now = new Date();
+                    const break_start_time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+                    messagePayload.break_start_time = break_start_time;
+                }
+
+                try {
+                    await channel.publish('update', messagePayload);
+                } catch (err) {
+                    console.error('Ably publish failed:', err);
+                } finally {
+                    window.location.href = url;
+                }
             }
         });
     }

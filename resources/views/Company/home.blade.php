@@ -56,18 +56,16 @@
     @if ($activeUser->count())
         <div class="alert alert-info">
             <button type="button" class="close" data-dismiss="alert">&times;</button>
-            <strong><?php $aU = $activeUser->count();
-                foreach($activeUser as $userActive):
-                $aU = $aU - 1;
-                ?>
+            <strong><?php $aU = $activeUser->count(); ?>
+                @foreach($activeUser as $userActive)
+                <?php $aU = $aU - 1; ?>
                 <a target="blank" style="text-decoration:none;cursor:pointer"
                    href="{!! URL::to('company/report') !!}?s_date=<?php echo date('Y-m-d', time()) ?>&e_date=<?php echo date('Y-m-d') ?>&id=<?php echo $userActive->user_id ?>">
                     {{ @$userActive->User->username }}
                     @if ($aU != 0) ,
                     @endif
                 </a>
-                <?php
-                endforeach; ?>
+                @endforeach
                 @if ($activeUser->count() > 1)
                     are
                 @else
@@ -83,21 +81,21 @@
     ?>
     <div class="alert alert-info">
         <button type="button" class="close" data-dismiss="alert">&times;</button>
-        <strong><?php $lU = $lateUser->count();
-            foreach($lateUser as $userLate):
-            $lU = $lU - 1;
-            ?>
+        <strong><?php $lU = $lateUser->count(); ?>
+            @foreach($lateUser as $userLate)
+            <?php $lU = $lU - 1; ?>
             <a target="blank" style="text-decoration:none;cursor:pointer"
                href="{!! URL::to('company/report') !!}?s_date=<?php echo date('Y-m-d') ?>&e_date=<?php echo date('Y-m-d') ?>&id=<?php echo $userLate->user_id ?>">
                 <?php echo $userLate->User->username;
                 if ($lU != 0) echo ',';?>
             </a>
-            <?php
-            endforeach;
-            if ($lateUser->count() > 1)
-                echo 'are';
-            else echo 'is';
-            ?> late today</strong>
+            @endforeach
+            @if ($lateUser->count() > 1)
+                are
+            @else
+                is
+            @endif
+            late today</strong>
     </div>
     <?php } if($totalUser - $activeUser->count()) { ?>
     <div class="alert alert-info">
@@ -152,16 +150,16 @@
         <div class="box span3">
             <div class="box-header well" data-original-title>
                 <h2><i class="icon-list-alt"></i> Punched IN
-                    <small>{!! count($activityWiseUserList['punchedInUser']) !!}</small></h2>
+                    <small id="punched-in-count">{!! count($activityWiseUserList['punchedInUser']) !!}</small></h2>
 
             </div>
             <div class="box-content">
-                <ul>
+                <ul id="punched-in-list">
                     @foreach($activityWiseUserList['punchedInUser'] as $user)
-                        <li>
+                        <li id="punched-in-user-{!! $user['id'] !!}">
                             <a style="font-size: 13px; color:#666;"
                                href="{!! URL::to('company/attendance-log') !!}?s_date=<?php echo date('Y-m-d', time()) ?>&e_date=<?php echo date('Y-m-d') ?>&id=<?php echo $user['id'] ?>">
-                                {!! $user['name'] !!} <small>{!! $user['working_hours'] !!} || Break {!! $user['total_break_duration'] !!}</small>
+                                {!! $user['name'] !!} <small>Break {!! $user['total_break_duration'] !!}</small>
                                 <span class="badge badge-brown pull-right">{!! $user['logged_in_at'] !!}</span>
                             </a>
 
@@ -175,11 +173,11 @@
         <div class="box span3">
             <div class="box-header well" data-original-title>
                 <h2><i class="icon-list-alt"></i> Break
-                    <small>{!! count($activityWiseUserList['onBreakUser']) !!}</small></h2>
+                    <small id="on-break-count">{!! count($activityWiseUserList['onBreakUser']) !!}</small></h2>
 
             </div>
             <div class="box-content">
-                <ul>
+                <ul id="on-break-list">
                     @foreach($activityWiseUserList['onBreakUser'] as $user)
 
                         <?php
@@ -188,7 +186,7 @@
                         $highlightClass = $totalMinutes > 30 ? 'breakTimeHighlighter' : '';
                         ?>
 
-                        <li class="{{ $highlightClass }}">
+                        <li id="on-break-user-{!! $user['id'] !!}" class="{{ $highlightClass }}">
                             <a style="font-size: 13px; color:#666;"
                                href="{!! URL::to('company/break-time-log') !!}?s_date=<?php echo date('Y-m-d', time()) ?>&e_date=<?php echo date('Y-m-d') ?>&id=<?php echo $user['id'] ?>">
                                 {!! $user['name'] !!}
@@ -204,13 +202,13 @@
         <div class="box span2">
             <div class="box-header well" data-original-title>
                 <h2><i class="icon-list-alt"></i> Punched OUT
-                    <small>{!! count($activityWiseUserList['punchedOutUser']) !!}</small></h2>
+                    <small id="punched-out-count">{!! count($activityWiseUserList['punchedOutUser']) !!}</small></h2>
 
             </div>
             <div class="box-content">
-                <ul class="punchOutList">
+                <ul class="punchOutList" id="punched-out-list">
                     @foreach($activityWiseUserList['punchedOutUser'] as $user)
-                        <li>
+                        <li id="punched-out-user-{!! $user['id'] !!}">
                             {!! $user['name'] !!}
                             <span class="badge badge-brown pull-right">{!! $user['logged_out_at'] !!}</span>
                             <p>IN: {!! $user['logged_in_at'] !!} || Break: {!! $user['total_break_duration'] !!}</p>
@@ -223,6 +221,40 @@
 
         <div class="box span2">
             <div class="box-header well" data-original-title>
+                <h2><i class="icon-list-alt"></i> IDLE Time </h2>
+
+            </div>
+            <div class="box-content">
+                <ul>
+                    @foreach($activityWiseUserList['usersIdleTimeLog'] as $user)
+                        <li>
+                            <a style="font-size: 13px; color:#666;" href="#">
+                                {!! $user['user_name'] !!} - {!! $user['totalIdleTime'] !!}
+                            </a>
+                        </li>
+                    @endforeach
+                </ul>
+            </div>
+        </div>
+        <div class="box span2">
+            <div class="box-header well" data-original-title>
+                <h2><i class="icon-list-alt"></i> Absent
+                    <small id="absent-count">{!! count($activityWiseUserList['notPunchedInUser']) !!}</small></h2>
+
+            </div>
+            <div class="box-content">
+                <ul id="absent-list">
+                    @foreach($activityWiseUserList['notPunchedInUser'] as $user)
+                        <li id="absent-user-{!! $user['id'] !!}">
+                            <a style="font-size: 13px; color:#666;" href="#">
+                                {!! $user['name'] !!}
+                            </a>
+                        </li>
+                    @endforeach
+                </ul>
+            </div>
+            <hr>
+            <div class="box-header well" data-original-title>
                 <h2><i class="icon-list-alt"></i> On Leave
                     <small>{!! count($activityWiseUserList['onLeaveUser']) !!}</small></h2>
 
@@ -233,24 +265,6 @@
                         <li>
                             <a style="font-size: 13px; color:#666;" href="#">
                                 {!! $user->user->username !!}
-                            </a>
-                        </li>
-                    @endforeach
-                </ul>
-            </div>
-        </div>
-        <div class="box span2">
-            <div class="box-header well" data-original-title>
-                <h2><i class="icon-list-alt"></i> Absent
-                    <small>{!! count($activityWiseUserList['notPunchedInUser']) !!}</small></h2>
-
-            </div>
-            <div class="box-content">
-                <ul>
-                    @foreach($activityWiseUserList['notPunchedInUser'] as $user)
-                        <li>
-                            <a style="font-size: 13px; color:#666;" href="#">
-                                {!! $user['name'] !!}
                             </a>
                         </li>
                     @endforeach
@@ -342,26 +356,6 @@
     </script>
 
     <?php } ?>
-    <?php
-    $totalHours = 0;
-    $totalMinutes = 0;
-    $totalSeconds = 0;
-    $reports = array();
-    foreach ($attendanceReport as $key => $report) {
-        if (!isset($reports[$report->user_id])) {
-            $totalHours = 0;
-            $totalMinutes = 0;
-            $totalSeconds = 0;
-        }
-        $reports[$report->user_id]['id'] = $report->id;
-        $reports[$report->user_id]['user_id'] = $report->user_id;
-        $reports[$report->user_id]['username'] = $report->User->username;
-        $reports[$report->user_id]['time'] = explode(":", $report->timediff);;
-        $reports[$report->user_id]['workingHours'] = ($totalHours = $totalHours + $reports[$report->user_id]['time'][0]);
-        $reports[$report->user_id]['workingMinutes'] = ($totalMinutes = $totalMinutes + $reports[$report->user_id]['time'][1]);
-        $reports[$report->user_id]['workingSeconds'] = ($totalSeconds = $totalSeconds + $reports[$report->user_id]['time'][2]);
-    }
-    ?>
 @endsection
 @section('jsBottom')
     <script>
@@ -427,6 +421,7 @@
             // Initialize Ably
             const ably = new Ably.Realtime(ablyConfig);
             const presenceChannel = ably.channels.get('tracker-presence');
+            const attendanceChannel = ably.channels.get('attendance-updates');
 
             // Update UI function
             function updateUserLists() {
@@ -445,11 +440,11 @@
                     const li = document.createElement('li');
                     li.className = user.online ? 'online' : 'offline';
                     li.innerHTML = `
-                <span class="status-indicator"></span>
-                <a href="${user.link || '#'}" style="color: #666; font-size: 13px;">
-                    ${user.name}
-                </a>
-            `;
+                        <span class="status-indicator"></span>
+                        <a href="${user.link || '#'}" style="color: #666; font-size: 13px;">
+                            ${user.name}
+                        </a>
+                    `;
 
                     if (user.online) {
                         onlineList.appendChild(li);
@@ -503,9 +498,123 @@
                 }
             }
 
+            // Handle attendance updates
+            async function handleAttendanceUpdate(message) {
+                const { status, user_id, name, logged_in_at, total_break_duration } = message.data;
+
+                if (status === 'Punch In') {
+                    // Remove user from Absent list
+                    const absentUserElement = document.getElementById(`absent-user-${user_id}`);
+                    if (absentUserElement) {
+                        absentUserElement.remove();
+                        const absentCount = document.getElementById('absent-count');
+                        absentCount.textContent = parseInt(absentCount.textContent) - 1;
+                    }
+
+                    // Add user to Punched In list
+                    const punchedInList = document.getElementById('punched-in-list');
+                    const punchedInUserElement = document.createElement('li');
+                    punchedInUserElement.id = `punched-in-user-${user_id}`;
+                    punchedInUserElement.innerHTML = `
+                        <a style="font-size: 13px; color:#666;"
+                           href="/company/attendance-log?s_date=<?php echo date('Y-m-d', time()) ?>&e_date=<?php echo date('Y-m-d') ?>&id=${user_id}">
+                            ${name} <small>Break ${total_break_duration}</small>
+                            <span class="badge badge-brown pull-right">${logged_in_at}</span>
+                        </a>
+                    `;
+                    punchedInList.appendChild(punchedInUserElement);
+
+                    const punchedInCount = document.getElementById('punched-in-count');
+                    punchedInCount.textContent = parseInt(punchedInCount.textContent) + 1;
+                } else if (status === 'Start Break') {
+                    // Remove user from Punched In list
+                    const punchedInUserElement = document.getElementById(`punched-in-user-${user_id}`);
+                    if (punchedInUserElement) {
+                        punchedInUserElement.remove();
+                        const punchedInCount = document.getElementById('punched-in-count');
+                        punchedInCount.textContent = parseInt(punchedInCount.textContent) - 1;
+                    }
+
+                    // Add user to Break list
+                    const onBreakList = document.getElementById('on-break-list');
+                    const onBreakUserElement = document.createElement('li');
+                    onBreakUserElement.id = `on-break-user-${user_id}`;
+                    onBreakUserElement.innerHTML = `
+                        <a style="font-size: 13px; color:#666;"
+                           href="/company/break-time-log?s_date=<?php echo date('Y-m-d', time()) ?>&e_date=<?php echo date('Y-m-d') ?>&id=${user_id}">
+                            ${name}
+                            <small>IN : ${break_start_time}</small>
+                        </a>
+                    `;
+                    onBreakList.appendChild(onBreakUserElement);
+
+                    const onBreakCount = document.getElementById('on-break-count');
+                    onBreakCount.textContent = parseInt(onBreakCount.textContent) + 1;
+                } else if (status === 'End Break') {
+                    // Remove user from Break list
+                    const onBreakUserElement = document.getElementById(`on-break-user-${user_id}`);
+                    if (onBreakUserElement) {
+                        onBreakUserElement.remove();
+                        const onBreakCount = document.getElementById('on-break-count');
+                        onBreakCount.textContent = parseInt(onBreakCount.textContent) - 1;
+                    }
+
+                    // Add user to Punched In list
+                    const punchedInList = document.getElementById('punched-in-list');
+                    const punchedInUserElement = document.createElement('li');
+                    punchedInUserElement.id = `punched-in-user-${user_id}`;
+                    punchedInUserElement.innerHTML = `
+                        <a style="font-size: 13px; color:#666;"
+                           href="/company/attendance-log?s_date=<?php echo date('Y-m-d', time()) ?>&e_date=<?php echo date('Y-m-d') ?>&id=${user_id}">
+                            ${name} <small>Break ${total_break_duration}</small>
+                            <span class="badge badge-brown pull-right">${logged_in_at}</span>
+                        </a>
+                    `;
+                    punchedInList.appendChild(punchedInUserElement);
+
+                    const punchedInCount = document.getElementById('punched-in-count');
+                    punchedInCount.textContent = parseInt(punchedInCount.textContent) + 1;
+                } else if (status === 'Punch Out') {
+                    // Remove user from Punched In list
+                    const punchedInUserElement = document.getElementById(`punched-in-user-${user_id}`);
+                    if (punchedInUserElement) {
+                        punchedInUserElement.remove();
+                        const punchedInCount = document.getElementById('punched-in-count');
+                        punchedInCount.textContent = parseInt(punchedInCount.textContent) - 1;
+                    }
+
+                    // Remove user from Break list (if they were on break)
+                    const onBreakUserElement = document.getElementById(`on-break-user-${user_id}`);
+                    if (onBreakUserElement) {
+                        onBreakUserElement.remove();
+                        const onBreakCount = document.getElementById('on-break-count');
+                        onBreakCount.textContent = parseInt(onBreakCount.textContent) - 1;
+                    }
+
+                    // Add user to Punched Out list
+                    const punchedOutList = document.getElementById('punched-out-list');
+                    const punchedOutUserElement = document.createElement('li');
+                    punchedOutUserElement.id = `punched-out-user-${user_id}`;
+                    punchedOutUserElement.innerHTML = `
+                        ${name}
+                        <span class="badge badge-brown pull-right">${logged_out_at}</span>
+                        <p>IN: ${logged_in_at} || Break: ${total_break_duration}</p>
+                    `;
+                    punchedOutList.appendChild(punchedOutUserElement);
+
+                    const punchedOutCount = document.getElementById('punched-out-count');
+                    punchedOutCount.textContent = parseInt(punchedOutCount.textContent) + 1;
+                }
+            }
+
+            async function setupAttendanceUpdates() {
+                await attendanceChannel.subscribe('update', handleAttendanceUpdate);
+            }
+
             // Initialize
             updateUserLists();
             setupPresence();
+            setupAttendanceUpdates();
         });
     </script>
 
