@@ -104,7 +104,7 @@
                     <tr>
                         <th>Username</th>
                         <th>Total break</th>
-                        <th>Punched in time</th>
+                        <th>Punched in</th>
                     </tr>
                     </thead>
                     <tbody id="punched-in-list">
@@ -141,6 +141,7 @@
                     <thead>
                         <tr>
                             <th>Username</th>
+                            <th>Total break</th>
                             <th>Break started at</th>
                         </tr>
                     </thead>
@@ -161,7 +162,11 @@
                                 </a>
                             </td>
                             <td>
-                                <small>{!! $user['break_started_at'] !!}</small>
+                                <small>{!! $user['total_break_duration'] !!}</small>
+                            </td>
+
+                            <td>
+                                <small class="badge badge-brown">{!! $user['break_started_at'] !!}</small>
                             </td>
                         </tr>
                     @endforeach
@@ -180,8 +185,8 @@
                 <table id="punched-out-table" class="table table-striped table-bordered">
                     <thead>
                         <tr>
-                            <th>Username</th>
-                            <th>Break time</th>
+                            <th>User</th>
+                            <th>Break</th>
                             <th>Punched in</th>
                             <th>Punched out</th>
                         </tr>
@@ -212,11 +217,10 @@
     <div class="row-fluid">
         <div class="box span4">
             <div class="box-header well" data-original-title>
-                <h2><i class="icon-list-alt"></i> IDLE Time </h2>
-
+                <h2><i class="icon-time"></i> Today's all Idle User <small id="todays-all-idle-count">0</small></h2>
             </div>
             <div class="box-content">
-                <ul>
+                <ul id="todays-all-idle-list">
                     @foreach($activityWiseUserList['usersIdleTimeLog'] as $user)
                         <li>
                             <a style="font-size: 13px; color:#666;" href="#">
@@ -228,6 +232,16 @@
             </div>
         </div>
         <div class="box span4">
+
+            <div class="box-header well" data-original-title>
+                <h2><i class="icon-time"></i> Idle Users <small id="idle-count">0</small></h2>
+            </div>
+            <div class="box-content">
+                <ul id="idle-list" class="user-status-list">
+                    {{-- This list will be populated by Ably --}}
+                </ul>
+            </div>
+            <hr>
 
             <div class="box-header well" data-original-title>
                 <h2><i class="icon-list-alt"></i> On Leave
@@ -411,7 +425,8 @@
             const allUsers = {!! json_encode($allUsers ?? []) !!};
             const userStatusMap = new Map(allUsers.map(user => [user.id.toString(), {
                 ...user,
-                online: false
+                online: false,
+                activity: 'active' // 'active' or 'idle'
             }]));
 
             // Initialize Ably
@@ -469,14 +484,59 @@
                 offlineCount.textContent = offlineUsers;
             }
 
+            function updateIdleList() {
+                const idleList = document.getElementById('idle-list');
+                const idleCount = document.getElementById('idle-count');
+
+                if (!idleList || !idleCount) return;
+
+                idleList.innerHTML = '';
+                let idleUsers = 0;
+
+                userStatusMap.forEach(user => {
+                    if (user.online && user.activity === 'idle') {
+                        const li = document.createElement('li');
+                        const idleTime = user.idleSince ? new Date(user.idleSince).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }) : '';
+                        li.innerHTML = `<a href="${user.link || '#'}" style="color: #666; font-size: 13px;">${user.name}</a> <small class="badge badge-warning">${idleTime}</small>`;
+                        idleList.appendChild(li);
+                        idleUsers++;
+                    }
+                });
+
+                idleCount.textContent = idleUsers;
+            }
+
             // Handle presence updates
             async function handlePresenceUpdate(member) {
-                const userId = member.data?.userId?.toString();
+                //console.log(member.timestamp);
+                let userId = null;
+                if(member.clientId){
+                    let clientIdSplit = member.clientId.split('-');
+                    userId = clientIdSplit[0] === 'tracker' ? clientIdSplit[1] : null;
+                }
                 if (!userId || !userStatusMap.has(userId)) return;
 
-                const isOnline = member.action !== 'leave';
-                userStatusMap.get(userId).online = isOnline;
+                const user = userStatusMap.get(userId);
+                user.online = member.action !== 'leave';
+
+                if (user.online) {
+                    if (member.data && member.data.status) {
+                        user.activity = member.data.status;
+                        if (user.activity === 'idle') {
+                            user.idleSince = member.timestamp;
+                        } else {
+                            delete user.idleSince;
+                        }
+                    }
+                } else {
+                    user.activity = 'offline';
+                    delete user.idleSince;
+                }
+
+                console.log(`User ${userId} is ${user.online ? 'online' : 'offline'} and status is ${user.activity}`);
+
                 updateUserLists();
+                updateIdleList();
             }
 
             // Main presence setup
@@ -498,7 +558,7 @@
                     });
 
                     // Subscribe to changes
-                    presenceChannel.presence.subscribe(['enter', 'leave'], handlePresenceUpdate);
+                    presenceChannel.presence.subscribe(['enter', 'update', 'leave'], handlePresenceUpdate);
 
                     // Enter admin presence
                     await presenceChannel.presence.enter({ admin: true });
@@ -541,9 +601,11 @@
                     punchedInCount.textContent = parseInt(punchedInCount.textContent) + 1;
                 } else if (status === 'Start Break') {
                     // Add user to Break list
+                    console.log(total_break_duration);
                     const formatted_break_start_time = new Date(break_start_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'America/New_York' });
                     onBreakTable.row.add([
                         `<a style="font-size: 13px; color:#666;" href="/company/break-time-log?s_date=<?php echo date('Y-m-d', time()) ?>&e_date=<?php echo date('Y-m-d') ?>&id=${user_id}">${name}</a>`,
+                        `<small>${total_break_duration}</small>`,
                         `<small>${formatted_break_start_time}</small>`
                     ]).node().id = `on-break-user-${user_id}`;
                     onBreakTable.draw();
@@ -609,6 +671,7 @@
 
             // Initialize
             updateUserLists();
+            updateIdleList();
             setupPresence();
             setupAttendanceUpdates();
         });

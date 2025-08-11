@@ -145,6 +145,7 @@
                     <li><a class="ajax-link" href="{!! URL::to('company/daily-attendance-report') !!}"><i class="icon-list"></i><span class="hidden-tablet"> Daily Attendance Report</span></a></li>
                     <li><a class="ajax-link" href="{!! URL::to('company/screenshot-list-request') !!}"><i class="icon-list"></i><span class="hidden-tablet"> Daily Screenshot</span></a></li>
                     <li><a class="ajax-link" href="{!! URL::to('company/idle-time') !!}"><i class="icon-list"></i><span class="hidden-tablet"> Idle Time Log</span></a></li>
+                    <li><a class="ajax-link" href="{!! URL::to('company/leave-report') !!}"><i class="icon-list"></i><span class="hidden-tablet"> Leave Report</span></a></li>
                     <li><a class="ajax-link" href="{!! URL::to('company/chat') !!}"><i class="icon-list"></i><span class="hidden-tablet"> Chat</span></a></li>
                 </ul>
                 <label id="for-is-ajax" class="hidden-tablet" for="is-ajax"></label>

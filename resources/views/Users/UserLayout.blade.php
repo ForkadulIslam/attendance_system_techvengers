@@ -176,6 +176,7 @@
                     <li class="nav-header hidden-tablet"> Report</li>
                     <li><a class="ajax-link" href="{!! URL::to('user/full-calender') !!}"><i class="icon-list"></i><span class="hidden-tablet"> Full Calender Report</span></a></li>
                     <li><a class="ajax-link" href="{!! URL::to('user/table-report') !!}"><i class="icon-list"></i><span class="hidden-tablet"> Table Report</span></a></li>
+                    <li><a class="ajax-link" href="{!! URL::to('user/leave-report') !!}"><i class="icon-list"></i><span class="hidden-tablet"> Leave Report</span></a></li>
                     <li><a class="ajax-link" href="{!! URL::to('user/chat') !!}"><i class="icon-list"></i><span class="hidden-tablet"> Chat</span></a></li>
                 </ul>
                 <label id="for-is-ajax" class="hidden-tablet" for="is-ajax"></label>

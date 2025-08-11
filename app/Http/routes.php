@@ -24,11 +24,13 @@ Route::group(['middleware' => 'auth'], function () {
     Route::controller('user', 'UserController');
     Route::get('break-start', 'BreakTimeController@breakStart')->name('break.start');
     Route::get('break-end', 'BreakTimeController@breakEnd')->name('break.end');
+    Route::get('user/leave-report', 'UserController@getLeaveReport');
 });
 
 Route::group(['middleware' => 'auth.company'], function () {
     Route::get('company/notice-board/create', 'CompanyController@getNoticeBoardCreate');
     Route::get('company/notice-board/{id}/edit', 'CompanyController@getNoticeBoardEdit');
+    Route::get('company/leave-report', 'CompanyController@getLeaveReport');
     Route::get('company/designation/{id}/edit', 'CompanyController@getDesignationEdit');
     Route::get('company/all-user/{id}/force', 'CompanyController@getForce');
     Route::post('company/all-user/{id}/force', 'CompanyController@postForce');

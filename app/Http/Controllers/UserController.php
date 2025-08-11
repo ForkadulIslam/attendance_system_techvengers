@@ -1032,4 +1032,41 @@ class UserController extends Controller {
         return $weekends;
     }
 
+    public function getLeaveReport()
+    {
+        $user = Auth::user();
+        $leaveCategories = LeaveCategories::where('company_id', $user->company_id)->get();
+        $first_day_this_year = date('Y-01-01');
+        $last_day_this_year = date('Y-12-t');
+
+        $leaveDetails = [];
+
+        $leaves = Leave::where('user_id', $user->id)
+            ->where('leave_status', 1)
+            ->whereBetween('leave_date', [$first_day_this_year, $last_day_this_year])
+            ->select(DB::raw('SUM(CASE WHEN is_half_day = 1 THEN 0.5 ELSE 1 END) as total_used'), 'leave_category_id')
+            ->groupBy('leave_category_id')
+            ->get()
+            ->keyBy('leave_category_id');
+
+        foreach ($leaveCategories as $category) {
+            $used = isset($leaves[$category->id]) ? $leaves[$category->id]->total_used : 0;
+            $budget = $category->category_num;
+
+            if ($category->id == 24 && $user->yearly_leave_balance) {
+                $budget = $user->yearly_leave_balance;
+            }
+
+            $leaveDetails[] = [
+                'category' => $category->category,
+                'budget' => $budget,
+                'approved' => $used,
+                'remaining' => $budget - $used,
+            ];
+        }
+
+        $data['leaveDetails'] = $leaveDetails;
+        return view('Users.userLeaveReport', $data);
+    }
+
 }

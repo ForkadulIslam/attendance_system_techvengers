@@ -648,53 +648,49 @@ class CompanyController extends Controller
     /**
      * @return \Illuminate\View\View|string
      */
-    public function getReport()
+    public function getLeaveReport()
     {
-        $data['startDate'] = Input::get('s_date');
-        $data['endDate'] = Input::get('e_date');
-        $data['id'] = Input::get('id');
-        $data['userInfo'] = \App\User::where('company_id', Auth::user()->company_id)
-            ->where('id', $data['id'])->first();
-        if (!$data['userInfo'])
-            return 'There User is Not Your Company';
-        $data['attendanceReport'] = UserDetails::
-        select(DB::raw('timediff(logout_time,login_time) as timediff'),
-            'login_date', 'logout_date', 'id', 'login_time', 'logout_time', 'user_id', 'status')
-            ->where('user_id', $data['id'])
-            ->where('login_date', '>=', $data['startDate'])
-            ->where('logout_date', '<=', $data['endDate'])
-            ->orderBy('id', 'ASC')
-            ->get()
-            ->toArray();
+        $users = User::where('company_id', Auth::user()->company_id)->where('status', 1)->get();
+        $leaveCategories = LeaveCategories::where('company_id', Auth::user()->company_id)->get();
+        $first_day_this_year = date('Y-01-01');
+        $last_day_this_year = date('Y-12-t');
 
-        // ✅ Calculate total work time duration
-        $totalSeconds = 0;
-        foreach ($data['attendanceReport'] as $log) {
-            if ($log['timediff']) {
-                list($h, $m, $s) = explode(':', $log['timediff']);
-                $totalSeconds += ($h * 3600) + ($m * 60) + $s;
+        $leaveReports = [];
+
+        foreach ($users as $user) {
+            $userLeaveReport = [
+                'username' => $user->username,
+                'leave_details' => []
+            ];
+
+            $leaves = Leave::where('user_id', $user->id)
+                ->where('leave_status', 1)
+                ->whereBetween('leave_date', [$first_day_this_year, $last_day_this_year])
+                ->select(DB::raw('SUM(CASE WHEN is_half_day = 1 THEN 0.5 ELSE 1 END) as total_used'), 'leave_category_id')
+                ->groupBy('leave_category_id')
+                ->get()
+                ->keyBy('leave_category_id');
+
+            foreach ($leaveCategories as $category) {
+                $used = isset($leaves[$category->id]) ? $leaves[$category->id]->total_used : 0;
+                $budget = $category->category_num;
+
+                if ($category->id == 24 && $user->yearly_leave_balance) {
+                    $budget = $user->yearly_leave_balance;
+                }
+
+                $userLeaveReport['leave_details'][] = [
+                    'category' => $category->category,
+                    'budget' => $budget,
+                    'approved' => $used,
+                    'remaining' => $budget - $used,
+                ];
             }
+            $leaveReports[] = $userLeaveReport;
         }
-        // Format to HH:MM:SS
-        $hours = floor($totalSeconds / 3600);
-        $minutes = floor(($totalSeconds % 3600) / 60);
-        $seconds = $totalSeconds % 60;
-        $data['totalWorkingHour'] = sprintf('%02d:%02d:%02d', $hours, $minutes, $seconds);
 
-        $data['allDate'] = $this->getDatesFromRange($data['startDate'], $data['endDate']);
-        $data['allHoliday'] = HolidayInfo::where('holiday', '>=', $data['startDate'])
-            ->where('holiday', '<=', $data['endDate'])
-            ->get()
-            ->toArray();
-        $data['allLeave'] = Leave::where('leave_date', '>=', $data['startDate'])
-            ->where('leave_date', '<=', $data['endDate'])
-            ->where('user_id', $data['id'])
-            ->where('leave_status', 1)
-            ->get()
-            ->toArray();
-        //return $data['attendanceReport'];
-        return view('Company.attendanceLog', $data);
-
+        $data['leaveReports'] = $leaveReports;
+        return view('Company.leaveReport', $data);
     }
 
     /**
@@ -2133,6 +2129,8 @@ class CompanyController extends Controller
 
         return view('Company.userIdleTimeLog', compact('logs', 'users'));
     }
+
+
 
 
 }

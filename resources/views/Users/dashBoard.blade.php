@@ -320,13 +320,19 @@
                     messagePayload.logged_in_at = now.toISOString();
                     messagePayload.total_break_duration = '00:00';
                 } else if (status === 'Start Break') {
-                    const now = new Date();
-                    messagePayload.break_start_time = now.toISOString();
+                    try{
+                        const response = await fetch('/api/getUser/' + '{{ Auth::user()->id }}');
+                        const data = await response.json();
+                        const now = new Date();
+                        messagePayload.break_start_time = now.toISOString();
+                        messagePayload.total_break_duration = data.total_break_duration;
+                    }catch(error){
+                        console.log("Start Break Event- Error:"+error)
+                    }
                 } else if (status === 'End Break' || status === 'Punch Out') {
                     try {
                         const response = await fetch('/api/getUser/' + '{{ Auth::user()->id }}');
                         const data = await response.json();
-                        console.log(data);
                         let loggedInAtApi = data.logged_in_at;
                         if (loggedInAtApi && loggedInAtApi.includes(' ')) {
                             loggedInAtApi = loggedInAtApi.replace(' ', 'T');

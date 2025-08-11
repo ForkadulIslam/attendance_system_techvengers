@@ -252,7 +252,7 @@ class ApiController extends Controller
 
     public function idleTimeStore(Request $request)
     {
-        \Log::info($request->all());
+        //\Log::info($request->all());
 
         // Define our required timezone
         $requiredTimezone = $this->timeZone;
@@ -276,6 +276,7 @@ class ApiController extends Controller
         $userId = $request->header('user-id');
         $idleSeconds = $request->input('totalIdleTime');
         $clientTimezone = $request->input('localTimezone');
+        // Need to check for user is on break by userId to ensure idle time wont store during break time.
 
         try {
             // Convert times from client timezone to our required timezone
@@ -284,7 +285,6 @@ class ApiController extends Controller
                 $request->input('timeStart'),
                 $clientTimezone
             )->setTimezone($requiredTimezone);
-
             $timeEnd = Carbon::createFromFormat(
                 'Y-m-d H:i:s',
                 $request->input('timeEnd'),
