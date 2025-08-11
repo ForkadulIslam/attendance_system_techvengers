@@ -289,7 +289,11 @@
     </script>
 @endif
 
+<script src="https://cdn.ably.io/lib/ably.min-2.js"></script>
 <script>
+    const ably = new Ably.Realtime('BEm5bw.24xxVQ:3nIhmsZUfMy_KRKWtOd5KcitYvWF-5VAUeTCieD_41k');
+    const channel = ably.channels.get('attendance-updates');
+
     setInterval(function() {
         location.reload();
     }, 30000);
@@ -303,9 +307,56 @@
             confirmButtonColor: "#28a745",
             cancelButtonColor: "#d33",
             confirmButtonText: "Yes, " + status.toLowerCase() + "!"
-        }).then((result) => {
+        }).then(async (result) => {
             if (result.isConfirmed) {
-                window.location.href = url;
+                let messagePayload = {
+                    status: status,
+                    user_id: '{{ Auth::user()->id }}',
+                    name: '{{ Auth::user()->username }}'
+                };
+
+                if (status === 'Punch In') {
+                    const now = new Date();
+                    messagePayload.logged_in_at = now.toISOString();
+                    messagePayload.total_break_duration = '00:00';
+                } else if (status === 'Start Break') {
+                    try{
+                        const response = await fetch('/api/getUser/' + '{{ Auth::user()->id }}');
+                        const data = await response.json();
+                        const now = new Date();
+                        messagePayload.break_start_time = now.toISOString();
+                        messagePayload.total_break_duration = data.total_break_duration;
+                    }catch(error){
+                        console.log("Start Break Event- Error:"+error)
+                    }
+                } else if (status === 'End Break' || status === 'Punch Out') {
+                    try {
+                        const response = await fetch('/api/getUser/' + '{{ Auth::user()->id }}');
+                        const data = await response.json();
+                        let loggedInAtApi = data.logged_in_at;
+                        if (loggedInAtApi && loggedInAtApi.includes(' ')) {
+                            loggedInAtApi = loggedInAtApi.replace(' ', 'T');
+                        }
+                        messagePayload.logged_in_at = new Date(loggedInAtApi).toISOString();
+                        messagePayload.total_break_duration = data.total_break_duration;
+                        if (status === 'Punch Out') {
+                            const now = new Date();
+                            messagePayload.logged_out_at = now.toISOString();
+                            messagePayload.total_break_duration = data.total_break_duration; // Ensure break duration is sent
+                        }
+                    } catch (error) {
+                        console.error('Error fetching user data:', error);
+                        // Proceed without the extra data if API call fails
+                    }
+                }
+
+                try {
+                    await channel.publish('update', messagePayload);
+                } catch (err) {
+                    console.error('Ably publish failed:', err);
+                } finally {
+                    window.location.href = url;
+                }
             }
         });
     }

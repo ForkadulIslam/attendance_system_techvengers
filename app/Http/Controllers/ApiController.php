@@ -7,13 +7,16 @@ use App\Leave;
 use App\NoticeBoard;
 use App\UserBreak;
 use App\UserDetails;
+use App\UserIdleTimeLog;
 use Auth;
 use Carbon\Carbon;
+use DB;
 use Illuminate\Http\Request;
 
 use App\Http\Requests;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Storage;
+use Validator;
 
 class ApiController extends Controller
 {
@@ -23,9 +26,11 @@ class ApiController extends Controller
      * @return \Illuminate\Http\Response
      */
 
+    private $timeZone = 'America/New_York';
     public function __construct()
     {
-        date_default_timezone_set(Company::first()->time_zone);
+        $this->timeZone = Company::first()->time_zone;
+        date_default_timezone_set($this->timeZone);
     }
 
     public function breakStart(Request $request)
@@ -243,5 +248,156 @@ class ApiController extends Controller
         Storage::put($path, $request->getContent());
 //
         return response()->json(['message' => 'Screenshot saved', 'filename' => $path]);
+    }
+
+    public function idleTimeStore(Request $request)
+    {
+        //\Log::info($request->all());
+
+        // Define our required timezone
+        $requiredTimezone = $this->timeZone;
+
+        // Validate request (removed timezone validation)
+        $validator = Validator::make($request->all(), [
+            'totalIdleTime' => 'required|integer|min:0',
+            'timeStart' => 'required|date_format:Y-m-d H:i:s',
+            'timeEnd' => 'required|date_format:Y-m-d H:i:s|after:timeStart',
+            'localTimezone' => 'required|timezone'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid data',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $userId = $request->header('user-id');
+        $idleSeconds = $request->input('totalIdleTime');
+        $clientTimezone = $request->input('localTimezone');
+        // Need to check for user is on break by userId to ensure idle time wont store during break time.
+
+        try {
+            // Convert times from client timezone to our required timezone
+            $timeStart = Carbon::createFromFormat(
+                'Y-m-d H:i:s',
+                $request->input('timeStart'),
+                $clientTimezone
+            )->setTimezone($requiredTimezone);
+            $timeEnd = Carbon::createFromFormat(
+                'Y-m-d H:i:s',
+                $request->input('timeEnd'),
+                $clientTimezone
+            )->setTimezone($requiredTimezone);
+
+            $logDate = $timeStart->format('Y-m-d');
+
+            // Log the timezone conversion for debugging
+            \Log::info("Timezone conversion", [
+                'client_timezone' => $clientTimezone,
+                'client_time_start' => $request->input('timeStart'),
+                'client_time_end' => $request->input('timeEnd'),
+                'converted_time_start' => $timeStart,
+                'converted_time_end' => $timeEnd
+            ]);
+
+            // Create new record for each idle period
+            $log = UserIdleTimeLog::create([
+                'user_id' => $userId,
+                'log_date' => $logDate,
+                'time_start' => $timeStart,
+                'time_end' => $timeEnd,
+                'time_count_in_second' => $idleSeconds
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Idle time recorded successfully',
+                'data' => [
+                    'period' => $log->formatted_idle_time,
+                    'start' => $timeStart->format('Y-m-d H:i:s'),
+                    'end' => $timeEnd->format('Y-m-d H:i:s'),
+                    'total_seconds' => $log->time_count_in_second,
+                    'original_timezone' => $clientTimezone,
+                    'stored_timezone' => $requiredTimezone
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error("Idle time recording failed: " . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to record idle time',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function getUser($id)
+    {
+        $user = \App\User::find($id);
+        $punchData = \App\UserDetails::where('user_id', $id)
+            ->where('login_date', date('Y-m-d'))
+            ->latest()
+            ->first();
+
+        $totalBreakTime = DB::table('user_breaks')
+            ->where('user_id', $id)
+            ->where('break_start', '>=', date('Y-m-d') . ' 00:00:00')
+            ->where('break_start', '<=', date('Y-m-d') . ' 23:59:59')
+            ->whereNotNull('break_end')
+            ->select(DB::raw('SEC_TO_TIME(SUM(TIME_TO_SEC(TIMEDIFF(break_end, break_start)))) AS total_break_time'))
+            ->first();
+
+        $totalBreakDurationFormatted = '00:00';
+        if ($totalBreakTime && $totalBreakTime->total_break_time) {
+            $totalBreakDurationFormatted = \Carbon\Carbon::parse($totalBreakTime->total_break_time)->format('H:i');
+        }
+
+        $loggedInAtFormatted = '';
+        if ($punchData && $punchData->login_time) {
+            // login_time is already a full datetime string, so parse it directly
+            $loggedInAtFormatted = Carbon::parse($punchData->login_time)->format('Y-m-d H:i:s');
+        }
+
+        return response()->json([
+            'id' => $user->id,
+            'name' => $user->username,
+            'total_break_duration' => $totalBreakDurationFormatted,
+            'logged_in_at' => $loggedInAtFormatted,
+        ]);
+    }
+
+    public function getDailyIdleTime(Request $request)
+    {
+        $userId = $request->header('user-id');
+        $date = $request->input('date', date('Y-m-d'));
+
+        $logs = UserIdleTimeLog::where('user_id', $userId)
+            ->where('log_date', $date)
+            ->orderBy('time_start')
+            ->get();
+
+        $totalSeconds = $logs->sum('time_count_in_second');
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'date' => $date,
+                'periods' => $logs,
+                'total_seconds' => $totalSeconds,
+                'total_formatted' => $this->secondsToTime($totalSeconds)
+            ]
+        ]);
+    }
+
+    private function secondsToTime($seconds)
+    {
+        $hours = floor($seconds / 3600);
+        $minutes = floor(($seconds % 3600) / 60);
+        $seconds = $seconds % 60;
+
+        return sprintf('%02d:%02d:%02d', $hours, $minutes, $seconds);
     }
 }

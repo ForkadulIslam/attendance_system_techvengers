@@ -1,4 +1,4 @@
-@extends('Company.CompanyLayout')
+3 column @extends('Company.CompanyLayout')
 @section('content')
     <div>
         <ul class="breadcrumb">

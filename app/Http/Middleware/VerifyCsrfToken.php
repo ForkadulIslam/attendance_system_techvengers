@@ -18,5 +18,6 @@ class VerifyCsrfToken extends BaseVerifier
         'api/punch-out',
         'api/punch-in',
         'api/screenshot-upload',
+        'api/idle-time'
     ];
 }

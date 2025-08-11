@@ -62,7 +62,7 @@
                         <div class="control-group" id="half_day_option_field" style="display: none">
                             <label class="control-label" for="is_half_day">Half day</label>
                             <div class="controls">
-                                <input type="checkbox" id="is_half_day" name="is_half_day" value=".5">
+                                <input type="checkbox" id="is_half_day" name="is_half_day" value="">
                             </div>
                         </div>
                         <div class="control-group">
@@ -130,9 +130,10 @@
                 });
             });
 
+
             $("#leave_category_id").on('change', function(){
                 let selectedCategory = $(this).val();
-                if(selectedCategory == 25){
+                if(selectedCategory != 25){
                     $("#half_day_option_field").show();
                 }else{
                     $("#half_day_option_field").hide();
