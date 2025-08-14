@@ -293,14 +293,7 @@ class ApiController extends Controller
 
             $logDate = $timeStart->format('Y-m-d');
 
-            // Log the timezone conversion for debugging
-            \Log::info("Timezone conversion", [
-                'client_timezone' => $clientTimezone,
-                'client_time_start' => $request->input('timeStart'),
-                'client_time_end' => $request->input('timeEnd'),
-                'converted_time_start' => $timeStart,
-                'converted_time_end' => $timeEnd
-            ]);
+
 
             // Create new record for each idle period
             $log = UserIdleTimeLog::create([
@@ -342,30 +335,47 @@ class ApiController extends Controller
             ->latest()
             ->first();
 
-        $totalBreakTime = DB::table('user_breaks')
+        $totalBreakSeconds = DB::table('user_breaks')
             ->where('user_id', $id)
             ->where('break_start', '>=', date('Y-m-d') . ' 00:00:00')
             ->where('break_start', '<=', date('Y-m-d') . ' 23:59:59')
             ->whereNotNull('break_end')
-            ->select(DB::raw('SEC_TO_TIME(SUM(TIME_TO_SEC(TIMEDIFF(break_end, break_start)))) AS total_break_time'))
-            ->first();
+            ->sum(DB::raw('TIME_TO_SEC(TIMEDIFF(break_end, break_start))'));
 
         $totalBreakDurationFormatted = '00:00';
-        if ($totalBreakTime && $totalBreakTime->total_break_time) {
-            $totalBreakDurationFormatted = \Carbon\Carbon::parse($totalBreakTime->total_break_time)->format('H:i');
+        if ($totalBreakSeconds) {
+            $totalBreakDurationFormatted = gmdate('H:i', $totalBreakSeconds);
         }
 
         $loggedInAtFormatted = '';
         if ($punchData && $punchData->login_time) {
-            // login_time is already a full datetime string, so parse it directly
             $loggedInAtFormatted = Carbon::parse($punchData->login_time)->format('Y-m-d H:i:s');
         }
+
+        $totalIdleSeconds = 0;
+        if ($punchData) {
+            $idleTimeLogQuery = UserIdleTimeLog::where('user_id', $id)
+                ->where('log_date', Carbon::parse($punchData->login_time)->toDateString())
+                ->where('time_start', '>=', Carbon::parse($punchData->login_time)->toTimeString());
+            if ($punchData->logout_date != '0000-00-00') {
+                $idleTimeLogQuery->where('log_date', Carbon::parse($punchData->logout_time)->toDateString())
+                    ->where('time_end', '<=', Carbon::parse($punchData->logout_time)->toTimeString());
+            }
+            $totalIdleSeconds = $idleTimeLogQuery->sum('time_count_in_second');
+        }
+
+        $netIdleSeconds = $totalIdleSeconds - $totalBreakSeconds;
+        if ($netIdleSeconds < 0) {
+            $netIdleSeconds = 0;
+        }
+        $netIdleTimeFormatted = gmdate('H:i:s', $netIdleSeconds);
 
         return response()->json([
             'id' => $user->id,
             'name' => $user->username,
             'total_break_duration' => $totalBreakDurationFormatted,
             'logged_in_at' => $loggedInAtFormatted,
+            'total_idle_time' => $netIdleTimeFormatted,
         ]);
     }
 

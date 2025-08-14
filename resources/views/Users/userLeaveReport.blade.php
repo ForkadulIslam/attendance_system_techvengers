@@ -35,6 +35,14 @@
                         </tr>
                     @endforeach
                     </tbody>
+                    <tfoot>
+                    <tr>
+                        <th>TOTAL</th>
+                        <th>{!! $total_budged !!}</th>
+                        <th>{!! $total_approved !!}</th>
+                        <th>{!! $total_remaining !!}</th>
+                    </tr>
+                    </tfoot>
                 </table>
             </div>
         </div><!--/span-->

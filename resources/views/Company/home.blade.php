@@ -49,6 +49,12 @@
         .offline .status-indicator {
             background-color: #d9534f;
         }
+        .DTTT_button_print{
+            display: none!important;
+        }
+        .dataTables_filter input{
+            width: 130px;
+        }
     </style>
     {!! HTML::style('css/jquery.dataTables.css') !!}
     {!! HTML::style('css/dataTables.tableTools.css') !!}
@@ -104,6 +110,7 @@
                     <tr>
                         <th>Username</th>
                         <th>Total break</th>
+                        <th>Idle Time</th>
                         <th>Punched in</th>
                     </tr>
                     </thead>
@@ -120,6 +127,15 @@
                                 <small>{!! $user['total_break_duration'] !!}</small>
                             </td>
                             <td>
+                                <small>
+                                    <?php
+                                        $idleTime = collect($activityWiseUserList['usersIdleTimeLog'])->where('user_name',$user['name'])->first();
+                                        //Log::info($idleTime['totalIdleTime'])
+                                    ?>
+                                    {!!  $idleTime ? $idleTime['totalIdleTime'] : 0 !!}
+                                </small>
+                            </td>
+                            <td>
                                 <span class="badge badge-brown">{!! $user['logged_in_at'] !!}</span>
                             </td>
                         </tr>
@@ -131,6 +147,18 @@
         <!--/span-->
 
         <div class="box span4">
+
+            <div class="box-header well" data-original-title>
+                <h2><i class="icon-time"></i> Idle Users <small id="idle-count">0</small></h2>
+            </div>
+            <div class="box-content">
+                <ul id="idle-list" class="user-status-list">
+                    {{-- This list will be populated by Ably --}}
+                </ul>
+            </div>
+
+            <hr>
+
             <div class="box-header well" data-original-title>
                 <h2><i class="icon-list-alt"></i> Break
                     <small id="on-break-count">{!! count($activityWiseUserList['onBreakUser']) !!}</small></h2>
@@ -139,11 +167,11 @@
             <div class="box-content">
                 <table id="on-break-table" class="table table-striped table-bordered">
                     <thead>
-                        <tr>
-                            <th>Username</th>
-                            <th>Total break</th>
-                            <th>Break started at</th>
-                        </tr>
+                    <tr>
+                        <th>Username</th>
+                        <th>Total break</th>
+                        <th>Running break</th>
+                    </tr>
                     </thead>
                     <tbody id="on-break-list">
                     @foreach($activityWiseUserList['onBreakUser'] as $user)
@@ -166,13 +194,52 @@
                             </td>
 
                             <td>
-                                <small class="badge badge-brown">{!! $user['break_started_at'] !!}</small>
+                                <small class="badge badge-brown">{!! $user['break_duration'] !!}</small>
                             </td>
                         </tr>
                     @endforeach
                     </tbody>
                 </table>
             </div>
+
+            <hr>
+
+            <div class="box-header well" data-original-title>
+                <h2><i class="icon-list-alt"></i> Absent
+                    <small id="absent-count">{!! count($activityWiseUserList['notPunchedInUser']) !!}</small></h2>
+
+            </div>
+            <div class="box-content">
+                <ul id="absent-list">
+                    @foreach($activityWiseUserList['notPunchedInUser'] as $user)
+                        <li id="absent-user-{!! $user['id'] !!}">
+                            <a style="font-size: 13px; color:#666;" href="#">
+                                {!! $user['name'] !!}
+                            </a>
+                        </li>
+                    @endforeach
+                </ul>
+            </div>
+
+            <hr>
+
+            <div class="box-header well" data-original-title>
+                <h2><i class="icon-list-alt"></i> On Leave
+                    <small>{!! count($activityWiseUserList['onLeaveUser']) !!}</small></h2>
+
+            </div>
+            <div class="box-content">
+                <ul>
+                    @foreach($activityWiseUserList['onLeaveUser'] as $user)
+                        <li>
+                            <a style="font-size: 13px; color:#666;" href="#">
+                                {!! $user->user->username !!}
+                            </a>
+                        </li>
+                    @endforeach
+                </ul>
+            </div>
+
         </div>
 
         <div class="box span4">
@@ -215,70 +282,6 @@
 
     </div>
     <div class="row-fluid">
-        <div class="box span4">
-            <div class="box-header well" data-original-title>
-                <h2><i class="icon-time"></i> Today's all Idle User <small id="todays-all-idle-count">0</small></h2>
-            </div>
-            <div class="box-content">
-                <ul id="todays-all-idle-list">
-                    @foreach($activityWiseUserList['usersIdleTimeLog'] as $user)
-                        <li>
-                            <a style="font-size: 13px; color:#666;" href="#">
-                                {!! $user['user_name'] !!} - {!! $user['totalIdleTime'] !!}
-                            </a>
-                        </li>
-                    @endforeach
-                </ul>
-            </div>
-        </div>
-        <div class="box span4">
-
-            <div class="box-header well" data-original-title>
-                <h2><i class="icon-time"></i> Idle Users <small id="idle-count">0</small></h2>
-            </div>
-            <div class="box-content">
-                <ul id="idle-list" class="user-status-list">
-                    {{-- This list will be populated by Ably --}}
-                </ul>
-            </div>
-            <hr>
-
-            <div class="box-header well" data-original-title>
-                <h2><i class="icon-list-alt"></i> On Leave
-                    <small>{!! count($activityWiseUserList['onLeaveUser']) !!}</small></h2>
-
-            </div>
-            <div class="box-content">
-                <ul>
-                    @foreach($activityWiseUserList['onLeaveUser'] as $user)
-                        <li>
-                            <a style="font-size: 13px; color:#666;" href="#">
-                                {!! $user->user->username !!}
-                            </a>
-                        </li>
-                    @endforeach
-                </ul>
-            </div>
-
-            <hr>
-
-            <div class="box-header well" data-original-title>
-                <h2><i class="icon-list-alt"></i> Absent
-                    <small id="absent-count">{!! count($activityWiseUserList['notPunchedInUser']) !!}</small></h2>
-
-            </div>
-            <div class="box-content">
-                <ul id="absent-list">
-                    @foreach($activityWiseUserList['notPunchedInUser'] as $user)
-                        <li id="absent-user-{!! $user['id'] !!}">
-                            <a style="font-size: 13px; color:#666;" href="#">
-                                {!! $user['name'] !!}
-                            </a>
-                        </li>
-                    @endforeach
-                </ul>
-            </div>
-        </div>
         <div class="box span4">
             <div class="box-header well" data-original-title>
                 <h2><i class="icon-user"></i> Online Status</h2>
@@ -415,6 +418,11 @@
     {!! HTML::script('js/dataTables.tableTools.js') !!}
     <script>
         document.addEventListener('DOMContentLoaded', async function() {
+
+            setTimeout(function(){
+                location.reload(true);
+            }, 30000);
+
             // Configuration
             const ablyConfig = {
                 key: 'BEm5bw.24xxVQ:3nIhmsZUfMy_KRKWtOd5KcitYvWF-5VAUeTCieD_41k',
@@ -592,6 +600,7 @@
                     punchedInTable.row.add([
                         `<a style="font-size: 13px; color:#666;" href="/company/attendance-log?s_date=<?php echo date('Y-m-d', time()) ?>&e_date=<?php echo date('Y-m-d') ?>&id=${user_id}">${name}</a>`,
                         `<small>${total_break_duration}</small>`,
+                        `<small>${message.data.net_idle_time}</small>`
                         `<span class="badge badge-brown">${formatted_logged_in_at}</span>`
                     ]).node().id = `punched-in-user-${user_id}`;
                     punchedInTable.draw();
@@ -606,7 +615,7 @@
                     onBreakTable.row.add([
                         `<a style="font-size: 13px; color:#666;" href="/company/break-time-log?s_date=<?php echo date('Y-m-d', time()) ?>&e_date=<?php echo date('Y-m-d') ?>&id=${user_id}">${name}</a>`,
                         `<small>${total_break_duration}</small>`,
-                        `<small>${formatted_break_start_time}</small>`
+                        `<small>00:00</small>`
                     ]).node().id = `on-break-user-${user_id}`;
                     onBreakTable.draw();
 
@@ -633,6 +642,7 @@
                         punchedInUserRow.data([
                             `<a style="font-size: 13px; color:#666;" href="/company/attendance-log?s_date=<?php echo date('Y-m-d', time()) ?>&e_date=<?php echo date('Y-m-d') ?>&id=${user_id}">${name}</a>`,
                             `<small>${total_break_duration}</small>`,
+                            `<small>${message.data.net_idle_time}</small>`
                             `<span class="badge badge-brown">${formatted_logged_in_at}</span>`
                         ]).draw();
                     }

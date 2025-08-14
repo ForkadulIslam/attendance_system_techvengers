@@ -3,6 +3,7 @@ use App\Leave;
 use App\LeaveCategories;
 use App\UserBreak;
 use App\UserDetails;
+use App\UserIdleTimeLog;
 use Auth;
 use Carbon\Carbon;
 use Request;
@@ -48,6 +49,18 @@ class UserController extends Controller {
         $data['onBreak'] = (session()->get('break_status') == 'on');
 
         $data['activityWiseUserList'] =  $this->activityWiseUserList();
+        //return $data['activityWiseUserList'];
+        $allUsers = \App\User::where('user_label', 2)
+            ->where('status', 1)
+            ->get()
+            ->map(function($user) {
+                return [
+                    'id' => $user->id,
+                    'name' => $user->username,
+                    'link' => url("company/report?s_date=".date('Y-m-d')."&e_date=".date('Y-m-d')."&id=".$user->id)
+                ];
+            });
+        $data['allUsers'] = $allUsers;
         return view('Users.dashBoard', $data);
     }
 
@@ -848,54 +861,97 @@ class UserController extends Controller {
         $notPunchedInUsers = [];
         $onBreakUsers = [];
         $loggedOutUsers = [];
-
+        $usersIdleTime = [];
         foreach ($allUsers as $user) {
+
+            $attendUser = UserDetails::where('user_id', $user->id)
+                ->where('login_date', date('Y-m-d'))
+                ->latest()
+                ->first();
+
+            if($attendUser){
+                $idleTimeLogQuery = UserIdleTimeLog::where('user_id', $user->id)
+                    ->where('log_date', Carbon::parse($attendUser->login_time)->toDateString())
+                    ->where('time_start','>=', Carbon::parse($attendUser->login_time)->toTimeString());
+                if($attendUser->logout_date != '0000-00-00'){
+                    $idleTimeLogQuery->where('log_date', Carbon::parse($attendUser->logout_time)->toDateString())
+                        ->where('time_end', '<=', Carbon::parse($attendUser->logout_time)->toTimeString());
+                }
+                $idleTimeLog = $idleTimeLogQuery->get();
+                $totalIdleSeconds = $idleTimeLog->sum('time_count_in_second');
+                //\Log::info($totalIdleSeconds);
+                $totalBreakSeconds = DB::table('user_breaks')
+                    ->where('user_id', $user->id)
+                    ->where('break_start', '>=', date('Y-m-d') . ' 00:00:00')
+                    ->where('break_start', '<=', date('Y-m-d') . ' 23:59:59')
+                    ->whereNotNull('break_end')
+                    ->sum(DB::raw('TIME_TO_SEC(TIMEDIFF(break_end, break_start))'));
+
+                $netIdleSeconds = $totalIdleSeconds - $totalBreakSeconds;
+                if ($netIdleSeconds < 0) {
+                    $netIdleSeconds = 0;
+                }
+
+                // Optional: Convert to HH:MM:SS for easy viewing
+                $hours = floor($netIdleSeconds / 3600);
+                $minutes = floor(($netIdleSeconds % 3600) / 60);
+                $seconds = $netIdleSeconds % 60;
+                ///\Log::info($netIdleSeconds);
+                $totalIdleFormatted = sprintf('%02d:%02d', $hours, $minutes);
+                $usersIdleTime[] = [
+                    'user_name'=>$attendUser->user_name,
+                    'totalIdleTime' => $totalIdleFormatted
+                ];
+                //\Log::info($usersIdleTime);
+            }
+            //return $usersIdleTime;
             $punchData = UserDetails::where('user_id', $user->id)
                 ->where('login_date', date('Y-m-d'))
                 ->where('logout_date', '0000-00-00')
                 ->latest()
                 ->first();
+
+            // Fetch total break time for today
+            $totalBreakTime = DB::table('user_breaks')
+                ->where('user_id', $user->id)
+                ->where('break_start', '>=', date('Y-m-d') . ' 00:00:00')
+                ->where('break_start', '<=', date('Y-m-d') . ' 23:59:59')
+                ->whereNotNull('break_end')
+                ->select(DB::raw('SEC_TO_TIME(SUM(TIME_TO_SEC(TIMEDIFF(break_end, break_start)))) AS total_break_time'))
+                ->first();
+            $totalBreakDuration = $totalBreakTime->total_break_time ?? '00:00';
             $userInfo = $user->username;
             if ($punchData) {
+                // Check if the user is on break
+                // Always add to punchedInUsers if punched in
+                $workingHours = Carbon::parse($punchData->login_time)
+                    ->diff(Carbon::now())
+                    ->format('%H:%I');
+                $punchedInUsers[] = [
+                    'id' => $user->id,
+                    'name' => $userInfo,
+                    'working_hours' => $workingHours,
+                    'total_break_duration' => Carbon::parse($totalBreakDuration)->format('H:i'),
+                    'logged_in_at' => Carbon::parse($punchData->login_time)->format("H:i A")
+                ];
+
                 // Check if the user is on break
                 $activeBreak = UserBreak::where('user_id', $user->id)
                     ->whereNull('break_end')
                     ->latest()
                     ->first();
-
                 if ($activeBreak) {
-                    // User is on break, so add to "On Break" list and exclude from "On Desk"
+                    // User is on break, so add to "On Break" list
                     $breakDuration = Carbon::parse($activeBreak->break_start)
                         ->diff(Carbon::now())
                         ->format('%H:%I');
-
-                    // Fetch total break time for today
-                    $totalBreakTime = DB::table('user_breaks')
-                        ->where('user_id', $user->id)
-                        ->where('break_start', '>=', date('Y-m-d') . ' 00:00:00')
-                        ->where('break_start', '<=', date('Y-m-d') . ' 23:59:59')
-                        ->whereNotNull('break_end')
-                        ->select(DB::raw('SEC_TO_TIME(SUM(TIME_TO_SEC(TIMEDIFF(break_end, break_start)))) AS total_break_time'))
-                        ->first();
-
-                    $totalBreakDuration = $totalBreakTime->total_break_time ?? '00:00';
-
                     $onBreakUsers[] = [
                         'id' => $user->id,
                         'name' => $userInfo,
                         'break_duration' => $breakDuration,
-                        'total_break_duration' => Carbon::parse($totalBreakDuration)->format('H:i')
-                    ];
-                } else {
-                    // User is working (not on break), add to "On Desk" list
-                    $workingHours = Carbon::parse($punchData->login_time)
-                        ->diff(Carbon::now())
-                        ->format('%H:%I');
-                    $punchedInUsers[] = [
-                        'id' => $user->id,
-                        'name' => $userInfo,
-                        'working_hours' => $workingHours,
-                        'logged_in_at' => Carbon::parse($punchData->login_time)->format("H:i A")
+                        'total_break_duration' => Carbon::parse($totalBreakDuration)->format('H:i'),
+                        'logged_in_at' => Carbon::parse($punchData->login_time)->format("H:i A"),
+                        'break_started_at' => Carbon::parse($activeBreak->break_start)->format("H:i A")
                     ];
                 }
             } else {
@@ -910,6 +966,8 @@ class UserController extends Controller {
                         'id' => $user->id,
                         'name' => $userInfo,
                         'logged_out_at' => Carbon::parse($loggedOutRecord->logout_time)->format("H:i A"),
+                        'total_break_duration' => Carbon::parse($totalBreakDuration)->format('H:i'),
+                        'logged_in_at' => Carbon::parse($loggedOutRecord->login_time)->format("H:i A"),
                         'duration' => Carbon::parse($loggedOutRecord->login_time)
                             ->diff(Carbon::parse($loggedOutRecord->logout_time))
                             ->format('%H:%I')
@@ -929,12 +987,14 @@ class UserController extends Controller {
         usort($loggedOutUsers, function ($a, $b) {
             return strtotime($a['logged_out_at']) - strtotime($b['logged_out_at']);
         });
+
         return [
             'punchedInUser' => $punchedInUsers,  // Now excludes users who are on break
             'notPunchedInUser' => $notPunchedInUsers,
             'onBreakUser' => $onBreakUsers,
             'onLeaveUser' => $onLeaveUsers,
             'punchedOutUser' => $loggedOutUsers,
+            'usersIdleTimeLog' => $usersIdleTime
         ];
     }
 
@@ -1049,6 +1109,7 @@ class UserController extends Controller {
             ->get()
             ->keyBy('leave_category_id');
 
+        $total_budget = 0; $total_approved=0; $total_remaining = 0;
         foreach ($leaveCategories as $category) {
             $used = isset($leaves[$category->id]) ? $leaves[$category->id]->total_used : 0;
             $budget = $category->category_num;
@@ -1056,15 +1117,22 @@ class UserController extends Controller {
             if ($category->id == 24 && $user->yearly_leave_balance) {
                 $budget = $user->yearly_leave_balance;
             }
-
+            $remaining = $budget - $used;
+            if($category->category !== 'Authorized Leave'){
+                $total_budget += $budget;
+                $total_approved += $used;
+                $total_remaining += $remaining;
+            }
             $leaveDetails[] = [
                 'category' => $category->category,
                 'budget' => $budget,
                 'approved' => $used,
-                'remaining' => $budget - $used,
+                'remaining' => $remaining,
             ];
         }
-
+        $data['total_budged'] = $total_budget;
+        $data['total_approved'] = $total_approved;
+        $data['total_remaining'] = $total_remaining;
         $data['leaveDetails'] = $leaveDetails;
         return view('Users.userLeaveReport', $data);
     }

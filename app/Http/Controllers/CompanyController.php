@@ -76,6 +76,7 @@ class CompanyController extends Controller
         $data['allNotice'] = NoticeBoard::orderBy('id', 'DESC')->paginate(10);
         $data['activityWiseUserList'] =  $this->activityWiseUserList();
         //return $data['activityWiseUserList'];
+        //return collect($data['activityWiseUserList']['usersIdleTimeLog'])->where('user_name','Test')->first();
 
         $allUsers = \App\User::where('user_label', 2)
             ->where('status', 1)
@@ -688,9 +689,70 @@ class CompanyController extends Controller
             }
             $leaveReports[] = $userLeaveReport;
         }
-
         $data['leaveReports'] = $leaveReports;
         return view('Company.leaveReport', $data);
+    }
+
+    public function getUserWiseLeaveRequest(){
+
+        $users = User::where('company_id', auth()->user()->company_id)
+            ->where('status', 1)
+            ->orderBy('username')
+            ->get();
+
+        return view('Company.userWiseLeaveReportRequest', compact( 'users'));
+    }
+
+    public function getLeaveReportByUser()
+    {
+
+        $user = User::find(Input::get('user_id'));
+        $leaveCategories = LeaveCategories::where('company_id', $user->company_id)->get();
+        $first_day_this_year = date('Y-01-01');
+        $last_day_this_year = date('Y-12-t');
+
+        $leaveDetails = [];
+
+        $leaves = Leave::where('user_id', $user->id)
+            ->where('leave_status', 1)
+            ->whereBetween('leave_date', [$first_day_this_year, $last_day_this_year])
+            ->select(DB::raw('SUM(CASE WHEN is_half_day = 1 THEN 0.5 ELSE 1 END) as total_used'), 'leave_category_id')
+            ->groupBy('leave_category_id')
+            ->get()
+            ->keyBy('leave_category_id');
+
+        $total_budget = 0; $total_approved=0; $total_remaining = 0;
+        foreach ($leaveCategories as $category) {
+            $used = isset($leaves[$category->id]) ? $leaves[$category->id]->total_used : 0;
+            $budget = $category->category_num;
+
+            if ($category->id == 24 && $user->yearly_leave_balance) {
+                $budget = $user->yearly_leave_balance;
+            }
+            $remaining = $budget - $used;
+            if($category->category !== 'Authorized Leave'){
+                $total_budget += $budget;
+                $total_approved += $used;
+                $total_remaining += $remaining;
+            }
+            $leaveDetails[] = [
+                'category' => $category->category,
+                'budget' => $budget,
+                'approved' => $used,
+                'remaining' => $remaining,
+            ];
+        }
+        $data['total_budged'] = $total_budget;
+        $data['total_approved'] = $total_approved;
+        $data['total_remaining'] = $total_remaining;
+        //return $leaveDetails;
+        $data['users'] = User::where('company_id', auth()->user()->company_id)
+            ->where('status', 1)
+            ->orderBy('username')
+            ->get();
+
+        $data['leaveDetails'] = $leaveDetails;
+        return view('Company.userWiseLeaveReportRequest', $data);
     }
 
     /**
@@ -1475,18 +1537,32 @@ class CompanyController extends Controller
                 }
                 $idleTimeLog = $idleTimeLogQuery->get();
                 $totalIdleSeconds = $idleTimeLog->sum('time_count_in_second');
+                //\Log::info($totalIdleSeconds);
+                $totalBreakSeconds = DB::table('user_breaks')
+                    ->where('user_id', $user->id)
+                    ->where('break_start', '>=', date('Y-m-d') . ' 00:00:00')
+                    ->where('break_start', '<=', date('Y-m-d') . ' 23:59:59')
+                    ->whereNotNull('break_end')
+                    ->sum(DB::raw('TIME_TO_SEC(TIMEDIFF(break_end, break_start))'));
+
+                $netIdleSeconds = $totalIdleSeconds - $totalBreakSeconds;
+                if ($netIdleSeconds < 0) {
+                    $netIdleSeconds = 0;
+                }
 
                 // Optional: Convert to HH:MM:SS for easy viewing
-                $hours = floor($totalIdleSeconds / 3600);
-                $minutes = floor(($totalIdleSeconds % 3600) / 60);
-                $seconds = $totalIdleSeconds % 60;
-                $totalIdleFormatted = sprintf('%02d:%02d:%02d', $hours, $minutes, $seconds);
+                $hours = floor($netIdleSeconds / 3600);
+                $minutes = floor(($netIdleSeconds % 3600) / 60);
+                $seconds = $netIdleSeconds % 60;
+                ///\Log::info($netIdleSeconds);
+                $totalIdleFormatted = sprintf('%02d:%02d', $hours, $minutes);
                 $usersIdleTime[] = [
                     'user_name'=>$attendUser->user_name,
                     'totalIdleTime' => $totalIdleFormatted
                 ];
+                //\Log::info($usersIdleTime);
             }
-
+            //return $usersIdleTime;
             $punchData = UserDetails::where('user_id', $user->id)
                 ->where('login_date', date('Y-m-d'))
                 ->where('logout_date', '0000-00-00')
@@ -1505,10 +1581,6 @@ class CompanyController extends Controller
             $userInfo = $user->username;
             if ($punchData) {
                 // Check if the user is on break
-                $activeBreak = UserBreak::where('user_id', $user->id)
-                    ->whereNull('break_end')
-                    ->latest()
-                    ->first();
                 // Always add to punchedInUsers if punched in
                 $workingHours = Carbon::parse($punchData->login_time)
                     ->diff(Carbon::now())
